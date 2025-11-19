@@ -11,18 +11,49 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #050505;
+            background-color: #111; /* Darker background for letterboxing */
             color: #fff;
             overflow: hidden;
             font-family: 'Courier New', Courier, monospace;
             user-select: none;
             -webkit-user-select: none;
-            touch-action: none; /* Prevents browser gestures */
+            touch-action: none; 
+            /* Flexbox to center the game stage on PC */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
         }
+
+        /* NEW: The Game Container */
+        #game-stage {
+            position: relative;
+            /* Enforce 4:3 Aspect Ratio (iPad Horizontal) */
+            aspect-ratio: 4 / 3;
+            
+            /* Scale to fit width OR height, whichever is smaller, leaving a small margin */
+            width: min(95vw, 126.67vh); 
+            height: auto;
+            
+            /* Fallback/Constraints */
+            max-width: 100%;
+            max-height: 100%;
+
+            background-color: #050505;
+            box-shadow: 0 0 50px #000;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+
         canvas {
             display: block;
             filter: contrast(1.2) brightness(1.1);
+            /* Canvas fills the stage */
+            width: 100%;
+            height: 100%;
         }
+
         #ui-layer {
             position: absolute;
             top: 0;
@@ -151,12 +182,28 @@
         }
 
         .joystick-zone {
-            position: absolute; bottom: 50px; width: 150px; height: 150px;
+            position: absolute; 
+            bottom: calc(50px + env(safe-area-inset-bottom)); /* Respect home bar */
+            width: 150px; height: 150px;
             pointer-events: auto; border-radius: 50%;
             border: 2px solid rgba(255, 255, 255, 0.1);
         }
-        #stick-left { left: 50px; }
-        #stick-right { right: 50px; }
+        #stick-left { left: calc(50px + env(safe-area-inset-left)); }
+        #stick-right { 
+            right: calc(50px + env(safe-area-inset-right)); 
+            /* Visual indicator for the Charge Zone (Outer 10%) */
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 0, 0.1); /* Subtle yellow ring */
+        }
+        
+        /* New visual helper for the Charge Threshold */
+        #stick-right::after {
+            content: '';
+            position: absolute;
+            top: 10%; left: 10%; width: 80%; height: 80%;
+            border-radius: 50%;
+            border: 1px dashed rgba(255, 255, 0, 0.3);
+            pointer-events: none;
+        }
         
         .joystick-nub {
             position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
@@ -181,70 +228,73 @@
 </head>
 <body>
 
-    <canvas id="gameCanvas"></canvas>
+    <!-- WRAPPER DIV FOR FIXED ASPECT/SIZE -->
+    <div id="game-stage">
 
-    <!-- Touch Controls -->
-    <div id="touch-layer">
-        <div id="stick-left" class="joystick-zone"><div id="nub-left" class="joystick-nub"></div></div>
-        <div id="stick-right" class="joystick-zone"><div id="nub-right" class="joystick-nub"></div></div>
-        <div id="btn-bomb" class="touch-btn">BOMB</div>
-        <div id="btn-dash" class="touch-btn">DASH</div>
-    </div>
+        <canvas id="gameCanvas"></canvas>
 
-    <div id="ui-layer">
-        <div class="hud-left">
-            <div id="score-hud">0</div>
-            <div id="level-text">LVL 1</div>
-            <div id="xp-container">
-                <div id="xp-bar"></div>
+        <!-- Touch Controls -->
+        <div id="touch-layer">
+            <div id="stick-left" class="joystick-zone"><div id="nub-left" class="joystick-nub"></div></div>
+            <div id="stick-right" class="joystick-zone"><div id="nub-right" class="joystick-nub"></div></div>
+            <div id="btn-bomb" class="touch-btn">BOMB</div>
+            <div id="btn-dash" class="touch-btn">DASH</div>
+        </div>
+
+        <div id="ui-layer">
+            <div class="hud-left">
+                <div id="score-hud">0</div>
+                <div id="level-text">LVL 1</div>
+                <div id="xp-container">
+                    <div id="xp-bar"></div>
+                </div>
+            </div>
+
+            <div class="hud-right">
+                <div id="lives-container" class="icon-row"></div>
+                <div id="bombs-container" class="icon-row"></div>
+                <div id="dash-status">DASH READY</div>
+            </div>
+            
+            <div id="boss-hp-container">
+                <div id="boss-label">WARNING: BOSS DETECTED</div>
+                <div id="boss-hp-bar"></div>
             </div>
         </div>
 
-        <div class="hud-right">
-            <div id="lives-container" class="icon-row"></div>
-            <div id="bombs-container" class="icon-row"></div>
-            <div id="dash-status">DASH READY</div>
-        </div>
-        
-        <div id="boss-hp-container">
-            <div id="boss-label">WARNING: BOSS DETECTED</div>
-            <div id="boss-hp-bar"></div>
-        </div>
-    </div>
-
-    <div id="level-up-screen">
-        <div id="level-up-title">SYSTEM UPGRADE</div>
-        <div class="card-container" id="card-container"></div>
-        <div style="color: #888; margin-top: 20px; font-size: 0.8rem;">PAD: L-STICK to Select, 'A' to Confirm</div>
-    </div>
-
-    <div id="start-screen">
-        <h1>NEON ROGUE</h1>
-        <div style="color: #555; font-size: 0.8rem; margin-top: -10px; margin-bottom: 20px;">VERSION 1.1</div>
-        <button id="start-btn">INITIATE RUN</button>
-        
-        <!-- Boss Test Controls -->
-        <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
-            <select id="boss-select" style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer;">
-                <option value="0">THE CORE</option>
-                <option value="1">INTERCEPTOR</option>
-                <option value="2">FORTRESS</option>
-                <option value="3">DYNAMO</option>
-                <option value="4">TITAN</option>
-            </select>
-            <button id="test-btn" style="padding: 8px 15px; font-size: 1rem; border: 1px solid #ff0; color: #ff0;">TEST BOSS</button>
+        <div id="level-up-screen">
+            <div id="level-up-title">SYSTEM UPGRADE</div>
+            <div class="card-container" id="card-container"></div>
+            <div style="color: #888; margin-top: 20px; font-size: 0.8rem;">PAD: L-STICK to Select, 'A' to Confirm</div>
         </div>
 
-        <!-- UPDATED CONTROLS DISPLAY -->
-        <div class="controls">
-            <h3 style="color:#0ff; text-shadow: 0 0 5px #0ff; margin-bottom: 10px; font-size: 1.2rem; font-weight: bold; text-transform: uppercase;">INPUT PROTOCOL</h3>
+        <div id="start-screen">
+            <h1>NEON ROGUE</h1>
+            <div style="color: #555; font-size: 0.8rem; margin-top: -10px; margin-bottom: 20px;">VERSION 1.1</div>
+            <button id="start-btn">INITIATE RUN</button>
+            
+            <!-- Boss Test Controls -->
+            <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
+                <select id="boss-select" style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer;">
+                    <option value="0">THE CORE</option>
+                    <option value="1">INTERCEPTOR</option>
+                    <option value="2">FORTRESS</option>
+                    <option value="3">DYNAMO</option>
+                    <option value="4">TITAN</option>
+                </select>
+                <button id="test-btn" style="padding: 8px 15px; font-size: 1rem; border: 1px solid #ff0; color: #ff0;">TEST BOSS</button>
+            </div>
+
+            <!-- UPDATED CONTROLS DISPLAY -->
+            <div class="controls">
+                <h3 style="color:#0ff; text-shadow: 0 0 5px #0ff; margin-bottom: 10px; font-size: 1.2rem; font-weight: bold; text-transform: uppercase;">INPUT PROTOCOL</h3>
             <p><strong>Movement:</strong> <span class="key">WASD</span> or <span class="key">L-Stick</span></p>
             <p><strong>Aim / Fire:</strong> <span class="key">Mouse</span> (Click) or <span class="key">R-Stick</span></p>
-            <p><strong>Charge Shot:</strong> <span class="key">Alt</span> or <span class="key">R-Trigger</span></p>
-            <p><strong>Dash:</strong> <span class="key">Shift</span> or <span class="key">L-Trigger</span></p>
-            <p><strong>Bomb:</strong> <span class="key">Space</span> or <span class="key">L-Bumper</span></p>
+            <p><strong>Charge Shot:</strong> <span class="key">Middle Mouse</span>, <span class="key">R-Trigger</span> or <span class="key">R-Stick Edge</span></p>
+            <p><strong>Dash:</strong> <span class="key">Space</span> or <span class="key">L-Trigger</span></p>
+            <p><strong>Bomb:</strong> <span class="key">Shift</span> or <span class="key">L-Bumper</span></p>
             <p style="color: #0f0; font-weight: bold; margin-top: 15px; font-size: 1.1rem;">PRESS 'A' or 'ENTER' TO START</p>
-            <p style="color: #ff0; font-size: 0.9em; margin-top: 10px;">TOUCH: Virtual Sticks & Buttons Active</p>
+            <p style="color: #ff0; font-size: 0.9em; margin-top: 10px;">TOUCH: Push Right Stick to Edge to Charge</p>
         </div>
     </div>
 
@@ -276,31 +326,42 @@
                 // Keyboard & Mouse
                 window.addEventListener('keydown', e => { 
                     this.keys[e.key.toLowerCase()] = true; 
-                    if (e.key === ' ') this.bomb = true;
-                    if (e.key === 'Shift') this.dash = true;
-                    if (e.key === 'Alt') { e.preventDefault(); this.charge = true; } // Prevent browser menu
-                    if (e.key === 'Escape') togglePause(); // Pause Toggle
+                    if (e.key === 'Shift') this.bomb = true; 
+                    if (e.key === ' ') this.dash = true;
+                    // Alt listener removed to prevent browser conflict
+                    if (e.key === 'Escape') togglePause(); 
                     this.setInputType('keyboard');
                 });
                 window.addEventListener('keyup', e => { 
                     this.keys[e.key.toLowerCase()] = false; 
-                    if (e.key === ' ') this.bomb = false;
-                    if (e.key === 'Shift') this.dash = false;
-                    if (e.key === 'Alt') { e.preventDefault(); this.charge = false; }
+                    if (e.key === 'Shift') this.bomb = false; 
+                    if (e.key === ' ') this.dash = false;
+                    // Alt listener removed
                 });
                 window.addEventListener('mousemove', e => { 
                     this.mouseX = e.clientX; this.mouseY = e.clientY; 
                     this.usingMouse = true;
-                    // Don't switch to mouse mode just on move (prevents jitter with controller), only click
                 });
-                window.addEventListener('mousedown', () => {
-                    this.isFiring = true;
-                    this.confirm = true; 
+                window.addEventListener('mousedown', (e) => {
+                    if (e.button === 0) { // Left Click -> Fire
+                        this.isFiring = true;
+                        this.confirm = true; 
+                    }
+                    if (e.button === 1) { // Middle Click -> Charge
+                        e.preventDefault();
+                        this.charge = true;
+                    }
                     this.setInputType('mouse');
                 });
-                window.addEventListener('mouseup', () => {
-                    this.isFiring = false;
-                    this.confirm = false;
+                window.addEventListener('mouseup', (e) => {
+                    if (e.button === 0) {
+                        this.isFiring = false;
+                        this.confirm = false;
+                    }
+                    if (e.button === 1) {
+                        e.preventDefault();
+                        this.charge = false;
+                    }
                 });
 
                 // Global touch listener to wake up touch controls
@@ -412,10 +473,24 @@
                     }
                     if (this.touchRight.active) {
                         ax = this.touchRight.x; ay = this.touchRight.y;
-                        this.isFiring = true;
+                        
+                        // CALCULATE STICK EXTENSION
+                        const dist = Math.hypot(ax, ay);
+                        
+                        // Threshold: 0.9 (90% extension)
+                        if (dist > 0.90) {
+                            // Outer Zone: CHARGE
+                            this.charge = true;
+                            this.isFiring = false; // Stop normal shots while charging
+                        } else {
+                            // Inner Zone: NORMAL FIRE
+                            this.charge = false;
+                            this.isFiring = true;
+                        }
                     } else if (!gamepad) {
                         // Only clear firing if not using gamepad
                         this.isFiring = false; 
+                        this.charge = false; // Stop charging if released
                     }
                 }
 
@@ -965,9 +1040,14 @@
                 
                 // Aim logic
                 if (Input.usingMouse) {
+                    // FIX: Account for canvas offset in the window
+                    const rect = canvas.getBoundingClientRect();
+                    const mx = Input.mouseX - rect.left;
+                    const my = Input.mouseY - rect.top;
+
                     const screenX = this.pos.x + width/2;
                     const screenY = this.pos.y + height/2;
-                    this.angle = Math.atan2(Input.mouseY - screenY, Input.mouseX - screenX) + Math.PI/2;
+                    this.angle = Math.atan2(my - screenY, mx - screenX) + Math.PI/2;
                 } else {
                     // Stick Aim
                     if (Math.hypot(Input.aim.x, Input.aim.y) > 0.1) {
@@ -2026,6 +2106,19 @@
             menuReqId = requestAnimationFrame(menuLoop);
         }
         
+        // UPDATED RESIZE FUNCTION TO USE GAME STAGE
+        function resize() { 
+            const stage = document.getElementById('game-stage');
+            // We calculate based on the stage size, not the window size
+            width = stage.clientWidth; 
+            height = stage.clientHeight; 
+            
+            canvas.width = width; 
+            canvas.height = height; 
+            
+            createGrid(); 
+        }
+
         function init() {
             resize(); window.addEventListener('resize', resize);
             
