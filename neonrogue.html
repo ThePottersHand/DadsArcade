@@ -222,6 +222,19 @@
     <div id="start-screen">
         <h1>NEON ROGUE</h1>
         <button id="start-btn">INITIATE RUN</button>
+        
+        <!-- NEW: Boss Test Controls -->
+        <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
+            <select id="boss-select" style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer;">
+                <option value="0">THE CORE</option>
+                <option value="1">INTERCEPTOR</option>
+                <option value="2">FORTRESS</option>
+                <option value="3">DYNAMO</option>
+                <option value="4">TITAN</option>
+            </select>
+            <button id="test-btn" style="padding: 8px 15px; font-size: 1rem; border: 1px solid #ff0; color: #ff0;">TEST BOSS</button>
+        </div>
+
         <div class="controls">
             <p>PC: <span class="key">WASD</span> + <span class="key">MOUSE</span></p>
             <p>PAD: <span class="key">L-STICK</span> + <span class="key">R-STICK</span> (L=DASH, R=BOMB)</p>
@@ -475,6 +488,7 @@
                         for(let i=0; i<e.changedTouches.length; i++) {
                             if(e.changedTouches[i].identifier === this.touchRight.id) {
                                 this.touchRight.active = false;
+                                this.touchRight.x = 0; this.touchRight.y = 0;
                                 document.getElementById('nub-right').style.transform = `translate(0px, 0px)`;
                             }
                         }
@@ -1043,7 +1057,7 @@
 
         class Bullet extends Entity {
             constructor(x, y, angle, isEnemy = false, damage = 1, piercing = 0, speedOverride = null) {
-                const shape = [new Vec3(0,-5,0), new Vec3(0,5,0)];
+                const shape = []; // Shape ignored in simplified draw
                 super(x, y, shape, isEnemy ? '#f00' : '#ff0'); 
                 this.angle = angle + Math.PI/2;
                 this.isEnemy = isEnemy;
@@ -1058,11 +1072,20 @@
                 this.vel.y = Math.sin(angle) * speed;
                 this.life = isEnemy ? 180 : 60; 
             }
+
+            // Optimized draw: No vector math, just a screen-space rectangle for max performance
+            draw() {
+                if (this.dead) return;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.pos.x + width/2 - 2, this.pos.y + height/2 - 2, 4, 4);
+            }
+
             update() {
                 this.pos.x += this.vel.x; this.pos.y += this.vel.y;
                 this.life--;
                 if (this.life <= 0) this.dead = true;
-                if (Math.random() > 0.8) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
+                // Reduced particle spam for performance (was 0.8)
+                if (Math.random() > 0.95) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
                 if(Math.abs(this.pos.x) > width/2 + 50 || Math.abs(this.pos.y) > height/2 + 50) this.dead = true;
             }
         }
@@ -1144,13 +1167,18 @@
         }
 
         class Boss extends Entity {
-            constructor() {
+            constructor(forceType = -1) {
                 let bossType;
-                let attempts = 0;
-                do {
-                    bossType = Math.floor(Math.random() * 5);
-                    attempts++;
-                } while (bossType === state.lastBossType && attempts < 10);
+                
+                if (forceType !== -1) {
+                    bossType = forceType;
+                } else {
+                    let attempts = 0;
+                    do {
+                        bossType = Math.floor(Math.random() * 5);
+                        attempts++;
+                    } while (bossType === state.lastBossType && attempts < 10);
+                }
                 state.lastBossType = bossType;
 
                 let shape, color, hitRadius = 100;
@@ -1191,28 +1219,24 @@
 
             draw() {
                 if (this.dead) return;
-                const screenX = this.pos.x + width/2; const screenY = this.pos.y + height/2;
-                ctx.save(); ctx.beginPath(); ctx.arc(screenX, screenY, this.radius, 0, Math.PI*2);
-                ctx.fillStyle = this.color + '11'; ctx.fill();
-                ctx.strokeStyle = this.color + '44'; ctx.lineWidth = 1;
-                ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(screenX, screenY, this.radius, -Date.now()/1000, -Date.now()/1000 + Math.PI*2); ctx.stroke();
-                ctx.restore();
+                // Removed circular indicator drawing code
                 super.draw();
             }
 
             runAI() {
+                // MODIFIED: Reduced bullet frequency/density for all bosses
                 if (this.bossType === 0) { // THE CORE (Balanced)
                     const t = this.attackTimer * 0.02;
                     this.vel.x = Math.sin(t) * 3; this.vel.y = Math.cos(t * 2) * 1;
 
-                    if (this.attackTimer % 4 === 0) {
+                    if (this.attackTimer % 8 === 0) { // Reduced from % 4
                         const angle = this.attackTimer * 0.05;
                         for(let i=0; i<3; i++) {
                             const offset = (Math.PI*2/3) * i;
                             bullets.push(new Bullet(this.pos.x, this.pos.y, angle + offset, true, 1, 0, 5));
                         }
                     }
-                    if (this.attackTimer % 90 === 0) {
+                    if (this.attackTimer % 120 === 0) { // Reduced from % 90
                         const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
                         bullets.push(new Bullet(this.pos.x, this.pos.y, angle, true, 1, 0, 8)); 
                         AudioEngine.playTone(200, 'square', 0.1, 0.1);
@@ -1237,11 +1261,10 @@
                         }
                     } else {
                         this.vel.x *= 0.8; this.vel.y *= 0.8;
-                        if (cycle % 10 === 0) {
+                        if (cycle % 15 === 0) { // Reduced from % 10
                             const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
                             bullets.push(new Bullet(this.pos.x, this.pos.y, angle, true, 1, 0, 12));
-                            bullets.push(new Bullet(this.pos.x, this.pos.y, angle - 0.5, true, 1, 0, 6));
-                            bullets.push(new Bullet(this.pos.x, this.pos.y, angle + 0.5, true, 1, 0, 6));
+                            // Removed side bullets to reduce density
                             AudioEngine.playTone(300, 'sawtooth', 0.05, 0.05);
                         }
                     }
@@ -1250,13 +1273,13 @@
                     this.vel.y = Math.sin(this.attackTimer * 0.01) * 1;
                     this.vel.y = Math.cos(this.attackTimer * 0.013) * 0.5;
 
-                    if (this.attackTimer % 8 === 0) {
+                    if (this.attackTimer % 12 === 0) { // Reduced from % 8
                         const xOff = (Math.random() - 0.5) * 200;
                         bullets.push(new Bullet(this.pos.x + xOff, this.pos.y + 40, Math.PI/2, true, 1, 0, 3));
                     }
                     
-                    if (this.attackTimer % 60 === 0) {
-                        for(let i=0; i<Math.PI*2; i+=Math.PI/6) {
+                    if (this.attackTimer % 80 === 0) { // Reduced from % 60
+                        for(let i=0; i<Math.PI*2; i+=Math.PI/4) { // Reduced density: PI/6 -> PI/4
                             bullets.push(new Bullet(this.pos.x, this.pos.y, i, true, 1, 0, 5));
                         }
                         AudioEngine.playTone(100, 'square', 0.2, 0.1);
@@ -1266,18 +1289,17 @@
                     const t = this.attackTimer * 0.03;
                     this.vel.x = Math.cos(t) * 5; this.vel.y = Math.sin(t) * 5;
 
-                    if (this.attackTimer % 4 === 0) {
+                    if (this.attackTimer % 6 === 0) { // Reduced from % 4
                         const angle = this.attackTimer * 0.1;
                         bullets.push(new Bullet(this.pos.x, this.pos.y, angle, true, 1, 0, 6));
                         bullets.push(new Bullet(this.pos.x, this.pos.y, angle + Math.PI, true, 1, 0, 6));
-                        bullets.push(new Bullet(this.pos.x, this.pos.y, -angle, true, 1, 0, 4));
-                        bullets.push(new Bullet(this.pos.x, this.pos.y, -angle + Math.PI, true, 1, 0, 4));
+                        // Removed 2 emitters
                     }
                 }
                 else if (this.bossType === 4) { // TITAN (Tank)
                     this.vel.x = (0 - this.pos.x) * 0.02; this.vel.y = (0 - this.pos.y) * 0.02;
 
-                    if (this.attackTimer % 5 === 0) {
+                    if (this.attackTimer % 8 === 0) { // Reduced from % 5
                         const angle = this.attackTimer * 0.02;
                         for(let i=0; i<4; i++) {
                             const a = angle + (Math.PI/2 * i);
@@ -1285,9 +1307,9 @@
                         }
                     }
 
-                    if (this.attackTimer % 120 === 0) {
+                    if (this.attackTimer % 150 === 0) { // Reduced from % 120
                         const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-                        for(let i = -0.5; i <= 0.5; i+=0.1) {
+                        for(let i = -0.4; i <= 0.4; i+=0.2) { // Wider step 0.1 -> 0.2
                             bullets.push(new Bullet(this.pos.x, this.pos.y, angle + i, true, 1, 0, 7));
                         }
                         AudioEngine.playSound('enemy_death'); 
@@ -1296,8 +1318,8 @@
             }
 
             takeDamage(amount) {
-                this.hp -= amount; this.color = '#fff';
-                setTimeout(() => { if(!this.dead) this.color = this.getBaseColor(); }, 50);
+                this.hp -= amount; 
+                // Visual flash removed for performance & clarity
                 updateBossUI((this.hp / this.maxHp) * 100);
                 if (this.hp <= 0) this.die();
             }
@@ -1380,7 +1402,14 @@
             document.addEventListener('click', unlockAudio);
             document.addEventListener('keydown', unlockAudio);
 
-            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('start-btn').addEventListener('click', () => startGame());
+            
+            // Listener for Test Button
+            document.getElementById('test-btn').addEventListener('click', () => {
+                const type = parseInt(document.getElementById('boss-select').value);
+                startGame(type);
+            });
+
             createGrid();
             
             // Start the menu loop for controller support
@@ -1455,7 +1484,7 @@
         
         function updateBossUI(percent) { document.getElementById('boss-hp-bar').style.width = percent + '%'; }
 
-        function startGame() {
+        function startGame(bossTestType = -1) {
             // Cancel menu loop to prevent double logic
             if (menuReqId) cancelAnimationFrame(menuReqId);
             
@@ -1473,6 +1502,13 @@
             
             // Reset debounce timer
             Input.lastConfirmTime = Date.now();
+
+            // BOSS TEST OVERRIDE
+            if (bossTestType !== -1) {
+                state.bossActive = true;
+                enemies.push(new Boss(bossTestType));
+                state.score = 20000; // Boost score so music/logic feels right
+            }
             
             updateHud(); AudioEngine.playSound('spawn'); loop();
         }
