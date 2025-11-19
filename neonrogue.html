@@ -762,36 +762,19 @@
             }
             draw() {
                 if (this.dead) return;
-
-                // OPTIMIZATION: Zero-Allocation Rotation Logic
-                // This prevents the iPad from creating/destroying thousands of 'Vec3' objects per frame.
-                const cx = Math.cos(this.rotation.x), sx = Math.sin(this.rotation.x);
-                const cy = Math.cos(this.rotation.y), sy = Math.sin(this.rotation.y);
-                const cz = Math.cos(this.rotation.z + this.angle), sz = Math.sin(this.rotation.z + this.angle);
-
                 ctx.beginPath(); ctx.strokeStyle = this.color; ctx.lineWidth = 2;
                 ctx.shadowBlur = 15; ctx.shadowColor = this.color;
                 let first = true;
                 for (let v of this.shape) {
                     if (v === null) { first = true; continue; }
-                    
-                    // Inline Math (Rotate X, then Y, then Z)
-                    const ry_y = v.y * cx - v.z * sx;
-                    const ry_z = v.y * sx + v.z * cx;
-
-                    const rz_x = v.x * cy + ry_z * sy;
-                    const rz_z = -v.x * sy + ry_z * cy;
-
-                    const final_x = rz_x * cz - ry_y * sz; 
-                    const final_y = rz_x * sz + ry_y * cz;
-
-                    const sx_draw = (final_x * this.scale) + this.pos.x + width/2;
-                    const sy_draw = (final_y * this.scale) + this.pos.y + height/2;
-
-                    if (first) { ctx.moveTo(sx_draw, sy_draw); first = false; } else { ctx.lineTo(sx_draw, sy_draw); }
+                    let rv = Math3D.rotateX(v, this.rotation.x);
+                    rv = Math3D.rotateY(rv, this.rotation.y);
+                    rv = Math3D.rotateZ(rv, this.rotation.z + this.angle); 
+                    const sx = (rv.x * this.scale) + this.pos.x + width/2;
+                    const sy = (rv.y * this.scale) + this.pos.y + height/2;
+                    if (first) { ctx.moveTo(sx, sy); first = false; } else { ctx.lineTo(sx, sy); }
                 }
                 ctx.stroke();
-                ctx.shadowBlur = 0; // CRITICAL: Reset shadow so it doesn't bleed into the Grid next frame
             }
         }
 
@@ -805,7 +788,7 @@
             draw() {
                 if (this.dead) return;
                 ctx.fillStyle = this.color; ctx.globalAlpha = this.life / this.maxLife;
-                ctx.shadowBlur = 0; // Optimization: No shadows on particles (saves GPU)
+                ctx.shadowBlur = 5; ctx.shadowColor = this.color;
                 ctx.fillRect(this.pos.x+width/2, this.pos.y+height/2, 3, 3);
                 ctx.globalAlpha = 1.0;
                 this.pos.x += this.vel.x; this.pos.y += this.vel.y;
@@ -1062,7 +1045,7 @@
             constructor(x, y, angle, isEnemy = false, damage = 1, piercing = 0, speedOverride = null) {
                 const shape = [new Vec3(0,-5,0), new Vec3(0,5,0)];
                 super(x, y, shape, isEnemy ? '#f00' : '#ff0'); 
-                this.angle = angle; // Fixed: Aligned with velocity (removed + Math.PI/2)
+                this.angle = angle + Math.PI/2;
                 this.isEnemy = isEnemy;
                 this.damage = damage;
                 this.piercing = piercing; 
@@ -1081,42 +1064,6 @@
                 if (this.life <= 0) this.dead = true;
                 if (Math.random() > 0.8) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
                 if(Math.abs(this.pos.x) > width/2 + 50 || Math.abs(this.pos.y) > height/2 + 50) this.dead = true;
-            }
-            draw() {
-                if (this.dead) return;
-                
-                // "HAPPY MEDIUM" / "FAKE GLOW" RENDERER
-                // Draws a thick transparent line (glow) + thin solid line (core)
-                // Much faster than shadowBlur on mobile, but looks better than plain lines.
-                
-                const len = 10; // Slightly longer for better visibility
-                const xOff = Math.cos(this.angle) * len;
-                const yOff = Math.sin(this.angle) * len;
-                const px = this.pos.x + width/2;
-                const py = this.pos.y + height/2;
-
-                ctx.shadowBlur = 0; // Ensure native blur is off
-                ctx.lineCap = "round";
-
-                // 1. The Fake Glow
-                ctx.beginPath();
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 6;
-                ctx.globalAlpha = 0.4;
-                ctx.moveTo(px - xOff, py - yOff);
-                ctx.lineTo(px + xOff, py + yOff);
-                ctx.stroke();
-
-                // 2. The Core
-                ctx.beginPath();
-                ctx.strokeStyle = this.isEnemy ? "#fff" : "#ff0"; // Fixed: Yellow core for player
-                ctx.lineWidth = 2;
-                ctx.globalAlpha = 1.0;
-                ctx.moveTo(px - xOff, py - yOff);
-                ctx.lineTo(px + xOff, py + yOff);
-                ctx.stroke();
-                
-                ctx.lineCap = "butt"; // Reset
             }
         }
 
@@ -1398,7 +1345,6 @@
         class GridLine {
             constructor(p1, p2) { this.p1 = p1; this.p2 = p2; this.baseP1 = { ...p1 }; this.baseP2 = { ...p2 }; }
             updateAndDraw() {
-                ctx.shadowBlur = 0; // FORCE RESET: Prevents grid from inheriting glow from previous frame
                 const offsetX = -player.pos.x * 0.2; const offsetY = -player.pos.y * 0.2;
                 let x1 = (this.baseP1.x + offsetX) % (width * 1.5); let y1 = (this.baseP1.y + offsetY) % (height * 1.5);
                 let x2 = (this.baseP2.x + offsetX) % (width * 1.5); let y2 = (this.baseP2.y + offsetY) % (height * 1.5);
