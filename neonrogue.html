@@ -33,6 +33,9 @@
             /* Default: Fit inside window */
             max-width: 100%;
             max-height: 100%;
+            
+            /* Center in flex container */
+            margin: auto;
         }
 
         /* UI SCALING CLASS (New) */
@@ -56,13 +59,13 @@
                 height: 100%; /* Fill height */
                 width: auto;  /* Width auto-adjusts to keep 4:3 */
             }
-            /* Controls float in the side gutters */
-            .joystick-zone { bottom: 40px; }
-            #stick-left { left: max(30px, env(safe-area-inset-left)); }
-            #stick-right { right: max(30px, env(safe-area-inset-right)); }
-            /* Buttons move slightly inward */
-            #btn-bomb { left: calc(max(30px, env(safe-area-inset-left)) + 140px); bottom: 40px; }
-            #btn-dash { right: calc(max(30px, env(safe-area-inset-right)) + 140px); bottom: 40px; }
+            /* Controls float in the side gutters - Pushed further out and lower */
+            .joystick-zone { bottom: 20px; }
+            #stick-left { left: max(20px, env(safe-area-inset-left)); }
+            #stick-right { right: max(20px, env(safe-area-inset-right)); }
+            /* Buttons move inward */
+            #btn-bomb { left: calc(max(20px, env(safe-area-inset-left)) + 160px); bottom: 30px; }
+            #btn-dash { right: calc(max(20px, env(safe-area-inset-right)) + 160px); bottom: 30px; }
         }
 
         /* PORTRAIT (Mobile Vertical) */
@@ -74,7 +77,7 @@
                 flex-grow: 0; /* Don't expand beyond ratio */
                 border: none; border-bottom: 2px solid #444;
             }
-            /* Control Deck Area (The space below the game) */
+            /* Control Deck Area */
             #mobile-controls-area {
                 display: block;
                 flex-grow: 1; /* Take all remaining space */
@@ -82,18 +85,21 @@
                 position: relative;
                 background: radial-gradient(#222 1px, transparent 1px);
                 background-size: 20px 20px;
+                z-index: 0;
             }
-            /* Re-position controls into the deck area */
-            .joystick-zone { 
-                top: 50%; transform: translateY(-50%); bottom: auto; 
-            }
-            #stick-left { left: 15%; }
-            #stick-right { right: 15%; }
             
-            /* Center buttons in the deck */
-            .touch-btn { top: 50%; transform: translateY(-50%); bottom: auto; }
-            #btn-bomb { left: 50%; margin-left: -60px; }
-            #btn-dash { right: 50%; margin-right: -60px; }
+            /* Controls - Anchored to the bottom of the screen (Vertical Layout) */
+            .joystick-zone { 
+                bottom: max(40px, env(safe-area-inset-bottom));
+                top: auto; transform: none;
+            }
+            #stick-left { left: 20px; }
+            #stick-right { right: 20px; }
+            
+            /* Buttons centered above sticks */
+            .touch-btn { bottom: max(180px, env(safe-area-inset-bottom)); top: auto !important; }
+            #btn-bomb { left: 30px; margin: 0; }
+            #btn-dash { right: 30px; margin: 0; }
         }
 
         canvas { display: block; width: 100%; height: 100%; filter: contrast(1.2) brightness(1.1); }
@@ -105,11 +111,11 @@
             align-items: flex-start; padding: 20px; box-sizing: border-box; z-index: 5;
         }
 
-        /* VIRTUAL CONTROLS */
+        /* VIRTUAL CONTROLS - MOVED TO FIXED VIEWPORT LAYER */
         #touch-layer {
-            /* Touch layer spans the whole screen to catch drags */
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 25; pointer-events: none; 
+            z-index: 100; /* Above everything */
+            pointer-events: none; 
             display: none; /* Hidden on PC by default */
             opacity: 1; transition: opacity 0.5s ease-out;
         }
@@ -117,7 +123,7 @@
 
         .joystick-zone {
             position: absolute;
-            width: 120px; height: 120px; /* Slightly smaller for better fit */
+            width: 120px; height: 120px;
             pointer-events: auto; border-radius: 50%;
             border: 2px solid rgba(255, 255, 255, 0.15);
             background: rgba(0,0,0,0.2);
@@ -185,6 +191,14 @@
         h1 { font-size: 4rem; margin: 0 0 20px 0; color: #fff; text-shadow: 0 0 20px #0ff, 0 0 40px #00f; text-align: center; letter-spacing: 5px; }
         button { background: transparent; border: 2px solid #0f0; color: #0f0; padding: 15px 40px; font-size: 1.5rem; font-family: inherit; cursor: pointer; text-shadow: 0 0 5px #0f0; box-shadow: 0 0 10px #0f0, inset 0 0 10px #0f0; transition: all 0.2s; text-transform: uppercase; }
         button:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0, inset 0 0 20px #0f0; }
+        
+        /* Full Screen Button Specifics */
+        #fs-btn {
+            margin-top: 15px; padding: 10px 20px; font-size: 1rem; 
+            border-color: #888; color: #888; box-shadow: none;
+        }
+        #fs-btn:hover { border-color: #fff; color: #fff; box-shadow: 0 0 10px #fff; }
+
         .controls { margin-top: 30px; color: #aaa; text-align: center; line-height: 1.6; padding: 20px; border: 1px solid rgba(170, 170, 170, 0.2); border-radius: 8px; }
         .key { border: 1px solid #666; padding: 2px 6px; border-radius: 4px; background: #222; color: #fff; margin: 0 2px; font-size: 0.9em; }
         
@@ -210,13 +224,7 @@
 
         <canvas id="gameCanvas"></canvas>
 
-        <!-- Touch Controls (Moved to body level via CSS, logically here) -->
-        <div id="touch-layer">
-            <div id="stick-left" class="joystick-zone"><div id="nub-left" class="joystick-nub"></div></div>
-            <div id="stick-right" class="joystick-zone"><div id="nub-right" class="joystick-nub"></div></div>
-            <div id="btn-bomb" class="touch-btn">BOMB</div>
-            <div id="btn-dash" class="touch-btn">DASH</div>
-        </div>
+        <!-- NOTE: Touch Controls moved out of here to BODY level below -->
 
         <!-- APPLIED SCALABLE-UI CLASS TO ALL INTERFACE LAYERS -->
         <div id="ui-layer" class="scalable-ui">
@@ -250,6 +258,7 @@
             <h1>NEON ROGUE</h1>
             <div style="color: #555; font-size: 0.8rem; margin-top: -10px; margin-bottom: 20px;">VERSION 1.1</div>
             <button id="start-btn">INITIATE RUN</button>
+            <button id="fs-btn">FULL SCREEN</button> <!-- NEW BUTTON -->
             
             <!-- Boss Test Controls -->
             <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
@@ -285,8 +294,16 @@
         </div>
     </div>
 
-    <!-- Placeholder for Portrait Mode Deck Layout (Empty div used by CSS logic) -->
+    <!-- Placeholder for Portrait Mode Deck Layout -->
     <div id="mobile-controls-area"></div>
+
+    <!-- Touch Controls (Global Overlay) -->
+    <div id="touch-layer">
+        <div id="stick-left" class="joystick-zone"><div id="nub-left" class="joystick-nub"></div></div>
+        <div id="stick-right" class="joystick-zone"><div id="nub-right" class="joystick-nub"></div></div>
+        <div id="btn-bomb" class="touch-btn">BOMB</div>
+        <div id="btn-dash" class="touch-btn">DASH</div>
+    </div>
 
     <script>
         /** * INPUT MANAGER (Unified) */
@@ -1718,6 +1735,18 @@
             document.addEventListener('touchstart', unlockAudio); document.addEventListener('click', unlockAudio); document.addEventListener('keydown', unlockAudio);
             document.getElementById('start-btn').addEventListener('click', () => startGame());
             document.getElementById('test-btn').addEventListener('click', () => { const type = parseInt(document.getElementById('boss-select').value); startGame(type); });
+            
+            // Full Screen Listener
+            document.getElementById('fs-btn').addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.log(`Error attempting to enable full-screen mode: ${err.message}`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
             document.getElementById('pm-resume').addEventListener('click', togglePause);
             document.getElementById('pm-restart').addEventListener('click', () => { togglePause(); startGame(); });
             document.getElementById('pm-quit').addEventListener('click', quitToTitle);
