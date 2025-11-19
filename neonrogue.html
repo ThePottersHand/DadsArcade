@@ -220,9 +220,10 @@
 
     <div id="start-screen">
         <h1>NEON ROGUE</h1>
+        <div style="color: #555; font-size: 0.8rem; margin-top: -10px; margin-bottom: 20px;">VERSION 1.1</div>
         <button id="start-btn">INITIATE RUN</button>
         
-        <!-- NEW: Boss Test Controls -->
+        <!-- Boss Test Controls -->
         <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
             <select id="boss-select" style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer;">
                 <option value="0">THE CORE</option>
@@ -234,11 +235,16 @@
             <button id="test-btn" style="padding: 8px 15px; font-size: 1rem; border: 1px solid #ff0; color: #ff0;">TEST BOSS</button>
         </div>
 
+        <!-- UPDATED CONTROLS DISPLAY -->
         <div class="controls">
-            <p>PC: <span class="key">WASD</span> + <span class="key">MOUSE</span></p>
-            <p>PAD: <span class="key">L-STICK</span> + <span class="key">R-STICK</span> (L=DASH, R=BOMB)</p>
-            <p style="color: #0f0; font-weight: bold; margin-top: 5px;">PRESS 'A' or 'START' TO BEGIN</p>
-            <p style="color: #ff0; font-size: 0.9em; margin-top: 10px;">TOUCH CONTROLS ENABLED FOR TABLETS</p>
+            <h3 style="color:#0ff; text-shadow: 0 0 5px #0ff; margin-bottom: 10px; font-size: 1.2rem; font-weight: bold; text-transform: uppercase;">INPUT PROTOCOL</h3>
+            <p><strong>Movement:</strong> <span class="key">WASD</span> or <span class="key">L-Stick</span></p>
+            <p><strong>Aim / Fire:</strong> <span class="key">Mouse</span> (Click) or <span class="key">R-Stick</span></p>
+            <p><strong>Charge Shot:</strong> <span class="key">Alt</span> or <span class="key">R-Trigger</span></p>
+            <p><strong>Dash:</strong> <span class="key">Shift</span> or <span class="key">L-Trigger</span></p>
+            <p><strong>Bomb:</strong> <span class="key">Space</span> or <span class="key">L-Bumper</span></p>
+            <p style="color: #0f0; font-weight: bold; margin-top: 15px; font-size: 1.1rem;">PRESS 'A' or 'ENTER' TO START</p>
+            <p style="color: #ff0; font-size: 0.9em; margin-top: 10px;">TOUCH: Virtual Sticks & Buttons Active</p>
         </div>
     </div>
 
@@ -251,6 +257,7 @@
             isFiring: false,
             dash: false,
             bomb: false,
+            charge: false, // New Input
             confirm: false, // For menus
             menuMove: 0, // -1 (left), 1 (right)
             
@@ -271,12 +278,15 @@
                     this.keys[e.key.toLowerCase()] = true; 
                     if (e.key === ' ') this.bomb = true;
                     if (e.key === 'Shift') this.dash = true;
+                    if (e.key === 'Alt') { e.preventDefault(); this.charge = true; } // Prevent browser menu
+                    if (e.key === 'Escape') togglePause(); // Pause Toggle
                     this.setInputType('keyboard');
                 });
                 window.addEventListener('keyup', e => { 
                     this.keys[e.key.toLowerCase()] = false; 
                     if (e.key === ' ') this.bomb = false;
                     if (e.key === 'Shift') this.dash = false;
+                    if (e.key === 'Alt') { e.preventDefault(); this.charge = false; }
                 });
                 window.addEventListener('mousemove', e => { 
                     this.mouseX = e.clientX; this.mouseY = e.clientY; 
@@ -359,14 +369,26 @@
                     if (Math.hypot(ax, ay) > 0.3) this.isFiring = true;
                     else if (this.inputType === 'gamepad') this.isFiring = false;
 
-                    // --- BUTTON MAPPING UPDATE ---
-                    // L1 (4) or L2 (6) -> DASH
-                    if (gamepad.buttons[4].pressed || gamepad.buttons[6].pressed) this.dash = true; 
-                    else if (this.inputType === 'gamepad') this.dash = false; 
+                    // --- BUTTON MAPPING UPDATE (v1.1) ---
+                    // L1 (4) -> BOMB (Swapped)
+                    if (gamepad.buttons[4].pressed) this.bomb = true; 
+                    else if (this.inputType === 'gamepad') this.bomb = false; 
+
+                    // R2 (7) -> CHARGE (Right Trigger)
+                    if (gamepad.buttons[7].pressed) this.charge = true;
+                    else if (this.inputType === 'gamepad') this.charge = false;
                     
-                    // R1 (5) or R2 (7) -> BOMB
-                    if (gamepad.buttons[5].pressed || gamepad.buttons[7].pressed) this.bomb = true; 
-                    else if (this.inputType === 'gamepad') this.bomb = false;
+                    // L2 (6) -> DASH (Left Trigger) (Swapped)
+                    if (gamepad.buttons[6].pressed) this.dash = true; 
+                    else if (this.inputType === 'gamepad') this.dash = false;
+
+                    // START (9) -> Pause (with debounce)
+                    if (gamepad.buttons[9] && gamepad.buttons[9].pressed) {
+                        if (Date.now() - this.lastConfirmTime > 300) {
+                            togglePause();
+                            this.lastConfirmTime = Date.now();
+                        }
+                    }
 
                     // A Button (0) -> Confirm
                     if (gamepad.buttons[0].pressed) this.confirm = true;
@@ -708,14 +730,16 @@
 
         const state = {
             running: false, paused: false, score: 0, frames: 0, difficulty: 1,
-            nextBossScore: 20000, bossActive: false, bossCount: 0, lastBossType: -1, screenFlash: 0,
+            nextBossScore: 10000, bossActive: false, bossCount: 0, lastBossType: -1, screenFlash: 0,
             xp: 0, xpNeeded: 10, level: 1,
             // Menu
-            activeOptions: [],
-            selectedOptionIndex: 0
+            selectedOptionIndex: 0,
+            pauseOptionIndex: 0, // Separate index for pause menu
+            isBossTest: false,
+            lastCarrierSpawn: 0 // Track carrier timing
         };
 
-        let player, bullets = [], enemies = [], powerups = [], shards = [], particles = [], grid = [];
+        let player, bullets = [], enemies = [], powerups = [], shards = [], particles = [], grid = [], shockwaves = [];
 
         const UPGRADES = [
             { id: 'multishot', name: 'SPLIT FIRE', type: 'Weapon', desc: 'Add +1 projectile to your spread.', stat: 'bulletCount', val: 1, rarity: 0.5 },
@@ -741,7 +765,8 @@
             boss5: [new Vec3(-10, -60, 0), new Vec3(10, -60, 0), new Vec3(10, -10, 0), new Vec3(60, -10, 0), new Vec3(60, 10, 0), new Vec3(10, 10, 0), new Vec3(10, 60, 0), new Vec3(-10, 60, 0), new Vec3(-10, 10, 0), new Vec3(-60, 10, 0), new Vec3(-60, -10, 0), new Vec3(-10, -10, 0), new Vec3(-10, -60, 0), null, new Vec3(-10, -10, 10), new Vec3(10, 10, 10), null, new Vec3(10, -10, 10), new Vec3(-10, 10, 10)],
             capsule: [new Vec3(10,0,0), new Vec3(7,7,0), new Vec3(0,10,0), new Vec3(-7,7,0), new Vec3(-10,0,0), new Vec3(-7,-7,0), new Vec3(0,-10,0), new Vec3(7,-7,0), new Vec3(10,0,0), null, new Vec3(10,0,0), new Vec3(0,0,10), new Vec3(-10,0,0), new Vec3(0,0,-10), new Vec3(10,0,0), null, new Vec3(0,10,0), new Vec3(0,0,10), new Vec3(0,-10,0), new Vec3(0,0,-10), new Vec3(0,10,0)],
             bomb: [new Vec3(10,0,0), new Vec3(7,7,0), new Vec3(0,10,0), new Vec3(-7,7,0), new Vec3(-10,0,0), new Vec3(-7,-7,0), new Vec3(0,-10,0), new Vec3(7,-7,0), new Vec3(10,0,0), null, new Vec3(10,0,0), new Vec3(0,0,10), new Vec3(-10,0,0), new Vec3(0,0,-10), new Vec3(10,0,0), null, new Vec3(0,10,0), new Vec3(0,0,10), new Vec3(0,-10,0), new Vec3(0,0,-10), new Vec3(0,10,0), null, new Vec3(0,10,0), new Vec3(0,16,0), new Vec3(4,18,0)],
-            shard: [new Vec3(0,-8,0), new Vec3(5,0,0), new Vec3(0,8,0), new Vec3(-5,0,0), new Vec3(0,-8,0), null, new Vec3(0,0,4), new Vec3(0,-8,0), null, new Vec3(0,0,4), new Vec3(5,0,0), null, new Vec3(0,0,4), new Vec3(0,8,0), null, new Vec3(0,0,4), new Vec3(-5,0,0)]
+            shard: [new Vec3(0,-8,0), new Vec3(5,0,0), new Vec3(0,8,0), new Vec3(-5,0,0), new Vec3(0,-8,0), null, new Vec3(0,0,4), new Vec3(0,-8,0), null, new Vec3(0,0,4), new Vec3(5,0,0), null, new Vec3(0,0,4), new Vec3(0,8,0), null, new Vec3(0,0,4), new Vec3(-5,0,0)],
+            carrier: [new Vec3(-20, -30, 0), new Vec3(20, -30, 0), new Vec3(35, 0, 0), new Vec3(20, 30, 0), new Vec3(-20, 30, 0), new Vec3(-35, 0, 0), new Vec3(-20, -30, 0), null, new Vec3(-15, -15, 10), new Vec3(15, -15, 10), new Vec3(15, 15, 10), new Vec3(-15, 15, 10), new Vec3(-15, -15, 10)]
         };
 
         class Entity {
@@ -810,6 +835,60 @@
             }
         }
 
+        // NEW: Shockwave Class for Level Up Pulse
+        class Shockwave extends Entity {
+            constructor(x, y) {
+                super(x, y, [], '#fff'); // No shape, manual draw
+                this.radius = 10;
+                this.maxRadius = 500; // Max range
+                this.lineWidth = 20;
+            }
+            update() {
+                this.radius += 20; // Expansion speed
+                this.lineWidth *= 0.9; // Fade out thickness
+                
+                // 1. Destroy Bullets
+                bullets.forEach(b => {
+                    if (b.isEnemy && !b.dead) {
+                        const dist = Math.hypot(this.pos.x - b.pos.x, this.pos.y - b.pos.y);
+                        if (Math.abs(dist - this.radius) < 40) { // Hit the wave front
+                            b.dead = true;
+                            particles.push(new Particle(b.pos.x, b.pos.y, '#f00', 0.5));
+                        }
+                    }
+                });
+
+                // 2. Push Enemies
+                enemies.forEach(e => {
+                    if (!e.dead && !(e instanceof Boss) && e.type !== 'carrier') { // MODIFIED: Carriers and Bosses are immune
+                        const dx = e.pos.x - this.pos.x;
+                        const dy = e.pos.y - this.pos.y;
+                        const dist = Math.hypot(dx, dy);
+                        // Check if enemy overlaps with the expanding ring
+                        if (Math.abs(dist - this.radius) < 50) {
+                            const force = 12; 
+                            e.vel.x += (dx / dist) * force;
+                            e.vel.y += (dy / dist) * force;
+                            e.color = '#fff'; // Flash on impact
+                            setTimeout(() => { if(!e.dead) e.color = (e instanceof Boss) ? e.getBaseColor() : (e.type === 'grunt' ? '#f0f' : e.type === 'chaser' ? '#f00' : '#f80'); }, 100);
+                        }
+                    }
+                });
+
+                if (this.radius > this.maxRadius) this.dead = true;
+            }
+            draw() {
+                if (this.dead) return;
+                ctx.beginPath();
+                ctx.arc(this.pos.x + width/2, this.pos.y + height/2, this.radius, 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, this.lineWidth/10)})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        }
+
         class Player extends Entity {
             constructor() {
                 super(0, 0, SHAPES.ship, '#0ff');
@@ -822,6 +901,7 @@
                 this.enteredArena = true; 
                 this.dashCooldown = 0;
                 this.dashTimer = 0;
+                this.chargeTimer = 0; // New Charge State
                 
                 // RPG Stats (Build)
                 this.stats = {
@@ -895,18 +975,74 @@
                     }
                 }
 
+                // Charge Logic
+                if (Input.charge) {
+                    this.chargeTimer++;
+                    
+                    // Sound: Rising pitch while charging
+                    if (this.chargeTimer <= 60 && this.chargeTimer % 10 === 0) {
+                        AudioEngine.playTone(200 + (this.chargeTimer * 10), 'triangle', 0.1, 0.05);
+                    }
+
+                    if (this.chargeTimer > 60 && this.chargeTimer % 5 === 0) {
+                        // Visual feedback for full charge
+                        particles.push(new Particle(this.pos.x + (Math.random()-0.5)*20, this.pos.y + (Math.random()-0.5)*20, '#ff0', 0.5));
+                    }
+                } else {
+                    if (this.chargeTimer > 60) {
+                        this.fireChargeShot();
+                    }
+                    this.chargeTimer = 0;
+                }
+
                 if (Input.bomb && this.bombs > 0) { 
                     this.useBomb(); 
                     Input.bomb = false; // Consumption trigger
                 }
 
                 if (this.fireTimer > 0) this.fireTimer--;
-                if (Input.isFiring && this.fireTimer <= 0) this.shoot();
+                
+                // Halt normal firing if charging button is held
+                if (Input.isFiring && this.fireTimer <= 0 && !Input.charge) this.shoot();
 
                 if (this.invulnerable > 0) {
                     this.invulnerable--;
                     this.color = Math.floor(Date.now() / 50) % 2 === 0 ? '#0ff' : '#000';
-                } else { this.color = '#0ff'; }
+                } else { 
+                    // Visuals: Flash Yellow (Charging) -> Solid Yellow (Charged) -> Blue (Normal)
+                    if (this.chargeTimer > 60) {
+                        this.color = '#ff0';
+                    } else if (this.chargeTimer > 0) {
+                        this.color = Math.floor(Date.now() / 50) % 2 === 0 ? '#ff0' : '#0ff'; 
+                    } else {
+                        this.color = '#0ff';
+                    }
+                }
+            }
+
+            // ... dash(), useBomb(), shoot() ...
+
+            fireChargeShot() {
+                const aimAngle = this.angle - Math.PI/2;
+                const bx = this.pos.x + Math.cos(aimAngle) * 25;
+                const by = this.pos.y + Math.sin(aimAngle) * 25;
+                AudioEngine.playSound('bomb'); // Heavier sound
+                shakeScreen(15);
+                
+                // UPDATED: Use stats for Multishot & Damage
+                const count = this.stats.bulletCount;
+                const spread = 0.15; // Tighter spread for charge than normal shot
+                const startAngle = aimAngle - ((count - 1) * spread) / 2;
+                
+                for(let i=0; i<count; i++) {
+                    // Charge shot: 5x Damage, +10 Piercing
+                    let b = new Bullet(bx, by, startAngle + (i * spread), false, this.stats.damage * 5, this.stats.piercing + 10, 12);
+                    b.isCharge = true;
+                    bullets.push(b);
+                }
+
+                this.vel.x -= Math.cos(aimAngle) * 15; // Big recoil
+                this.vel.y -= Math.sin(aimAngle) * 15;
             }
 
             dash() {
@@ -938,7 +1074,8 @@
                 state.screenFlash = 1.0; shakeScreen(30); AudioEngine.playSound('bomb');
                 bullets = [];
                 enemies.forEach(e => {
-                    if (e instanceof Boss) e.takeDamage(150); else e.hit(100);
+                    // MODIFIED: Reduced boss damage (150 -> 50) to prevent 1-hit kills on early bosses
+                    if (e instanceof Boss) e.takeDamage(50); else e.hit(100);
                 });
                 createExplosion(this.pos.x, this.pos.y, '#fff', 100);
             }
@@ -1063,6 +1200,7 @@
                 this.damage = damage;
                 this.piercing = piercing; 
                 this.hitIds = []; 
+                this.isCharge = false; // Default
                 
                 let speed = isEnemy ? 6 : 15;
                 if (speedOverride !== null) speed = speedOverride;
@@ -1076,7 +1214,14 @@
             draw() {
                 if (this.dead) return;
                 ctx.fillStyle = this.color;
-                ctx.fillRect(this.pos.x + width/2 - 2, this.pos.y + height/2 - 2, 4, 4);
+                if (this.isCharge) {
+                    // Bigger draw for charge shot
+                    ctx.shadowBlur = 20; ctx.shadowColor = '#ff0';
+                    ctx.fillRect(this.pos.x + width/2 - 8, this.pos.y + height/2 - 8, 16, 16);
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.fillRect(this.pos.x + width/2 - 2, this.pos.y + height/2 - 2, 4, 4);
+                }
             }
 
             update() {
@@ -1084,7 +1229,12 @@
                 this.life--;
                 if (this.life <= 0) this.dead = true;
                 // Reduced particle spam for performance (was 0.8)
-                if (Math.random() > 0.95) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
+                // Increased particle spam for Charge Shot
+                if (this.isCharge) {
+                    if (Math.random() > 0.5) particles.push(new Particle(this.pos.x, this.pos.y, '#ff0', 0.8));
+                } else {
+                    if (Math.random() > 0.95) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
+                }
                 if(Math.abs(this.pos.x) > width/2 + 50 || Math.abs(this.pos.y) > height/2 + 50) this.dead = true;
             }
         }
@@ -1092,34 +1242,86 @@
         class Enemy extends Entity {
             constructor(type) {
                 let shape, color, hp, scoreVal;
+                let ex, ey;
+                let safe = false;
+
+                // Define Types
                 if (type === 'grunt') { shape = SHAPES.cube; color = '#f0f'; hp = 1; scoreVal = 100; } 
                 else if (type === 'chaser') { shape = SHAPES.diamond; color = '#f00'; hp = 2; scoreVal = 250; } 
                 else if (type === 'spinner') { shape = SHAPES.shuriken; color = '#f80'; hp = 5; scoreVal = 500; }
+                else if (type === 'carrier') { shape = SHAPES.carrier; color = '#0f0'; hp = 15; scoreVal = 2000; } // HP Reduced 30->15
 
                 hp += Math.floor(state.difficulty * 0.5);
 
-                let ex, ey;
-                let safe = false;
-                while (!safe) {
-                    if (Math.random() < 0.5) {
-                        ex = Math.random() < 0.5 ? -width/2 - 50 : width/2 + 50;
-                        ey = (Math.random() - 0.5) * height;
-                    } else {
-                        ex = (Math.random() - 0.5) * width;
-                        ey = Math.random() < 0.5 ? -height/2 - 50 : height/2 + 50;
-                    }
-                    if (player && Math.hypot(ex - player.pos.x, ey - player.pos.y) > 400) {
-                        safe = true;
-                    } else {
-                        ex = -ex; ey = -ey; safe = true; 
+                // Spawn Logic
+                if (type === 'carrier') {
+                    // Carriers spawn on an edge and aim for the opposite side
+                    const side = Math.floor(Math.random() * 4);
+                    if (side === 0) { ex = -width/2 - 60; ey = (Math.random()-0.5)*height*0.8; } // Left
+                    else if (side === 1) { ex = width/2 + 60; ey = (Math.random()-0.5)*height*0.8; } // Right
+                    else if (side === 2) { ex = (Math.random()-0.5)*width*0.8; ey = -height/2 - 60; } // Top
+                    else { ex = (Math.random()-0.5)*width*0.8; ey = height/2 + 60; }
+                    safe = true; 
+                } else {
+                    // Standard spawn logic (random safe spot)
+                    while (!safe) {
+                        if (Math.random() < 0.5) {
+                            ex = Math.random() < 0.5 ? -width/2 - 50 : width/2 + 50;
+                            ey = (Math.random() - 0.5) * height;
+                        } else {
+                            ex = (Math.random() - 0.5) * width;
+                            ey = Math.random() < 0.5 ? -height/2 - 50 : height/2 + 50;
+                        }
+                        if (player && Math.hypot(ex - player.pos.x, ey - player.pos.y) > 400) {
+                            safe = true;
+                        } else {
+                            ex = -ex; ey = -ey; safe = true; 
+                        }
                     }
                 }
 
                 super(ex, ey, shape, color);
                 this.type = type; this.hp = hp; this.maxHp = hp; this.scoreVal = scoreVal;
+
+                // Set Velocity for Carrier (Constant direction across screen)
+                if (this.type === 'carrier') {
+                    const targetX = -ex; // Opposite side
+                    const targetY = ey + (Math.random()-0.5)*200; // Slight variance
+                    const angle = Math.atan2(targetY - ey, targetX - ex);
+                    const speed = 1.5; // Slow
+                    this.vel.x = Math.cos(angle) * speed;
+                    this.vel.y = Math.sin(angle) * speed;
+                    this.angle = angle + Math.PI/2; // Orient graphic
+                }
             }
+
             update() {
                 super.update();
+
+                // Despawn if carrier leaves arena
+                if (this.type === 'carrier') {
+                    if (this.enteredArena) {
+                        // If it was in, and now it's out, it escapes
+                        if (this.pos.x < -width/2 - 100 || this.pos.x > width/2 + 100 || 
+                            this.pos.y < -height/2 - 100 || this.pos.y > height/2 + 100) {
+                            this.dead = true; // Escaped!
+                        }
+                    }
+                    return; // Carrier ignores player tracking
+                }
+
+                // KNOCKBACK CHECK: If moving faster than normal speed (due to shockwave), 
+                // apply friction and skip AI logic so they don't immediately override the push.
+                const currentSpeed = Math.hypot(this.vel.x, this.vel.y);
+                if (currentSpeed > 6) { 
+                    this.vel.x *= 0.9;
+                    this.vel.y *= 0.9;
+                    // Keep visuals spinning
+                    if(this.type === 'chaser') this.rotVel.z = 0.2;
+                    if(this.type === 'spinner') this.rotVel.z = 0.3;
+                    return; // Skip attack logic this frame
+                }
+
                 if (!player.dead) {
                     const dx = player.pos.x - this.pos.x;
                     const dy = player.pos.y - this.pos.y;
@@ -1155,10 +1357,20 @@
                     let count = 1;
                     if (this.type === 'chaser') count = 2;
                     if (this.type === 'spinner') count = 3;
+                    
+                    // CARRIER DROPS
+                    if (this.type === 'carrier') {
+                        count = 25; // Massive drop
+                        powerups.push(new PowerUp(this.pos.x, this.pos.y)); // Guaranteed powerup
+                        shakeScreen(15);
+                        AudioEngine.playSound('powerup');
+                    }
+
                     for(let i=0; i<count; i++) {
                         shards.push(new Shard(this.pos.x + (Math.random()-0.5)*20, this.pos.y + (Math.random()-0.5)*20));
                     }
-                    if (Math.random() < 0.02) { 
+                    
+                    if (this.type !== 'carrier' && Math.random() < 0.02) { 
                         powerups.push(new PowerUp(this.pos.x, this.pos.y)); 
                     }
                 }
@@ -1329,18 +1541,45 @@
 
             die() {
                 this.dead = true;
-                state.bossActive = false;
-                AudioEngine.startMusic('stage');
-                document.getElementById('boss-hp-container').style.display = 'none';
                 
                 createExplosion(this.pos.x, this.pos.y, this.color, 100);
                 AudioEngine.playSound('enemy_death');
-                addScore(10000);
-                
-                state.nextBossScore = state.score + 30000; 
-
                 shakeScreen(40);
+                document.getElementById('boss-hp-container').style.display = 'none';
+
+                // --- NEW LOGIC: Test Mode Exit ---
+                if (state.isBossTest) {
+                    state.running = false; 
+                    AudioEngine.stopMusic();
+                    setTimeout(() => {
+                        document.getElementById('start-screen').style.display = 'flex';
+                        document.getElementById('start-screen').style.opacity = 1;
+                        document.querySelector('h1').innerText = "NEON ROGUE"; // Reset title
+                        document.getElementById('start-btn').innerText = "INITIATE RUN"; // Reset button text
+                        Input.lastConfirmTime = Date.now();
+                        menuLoop(); 
+                    }, 1000); 
+                    return; // EXIT HERE
+                }
+                // --- END NEW LOGIC ---
+
+                // Normal Game Progression
+                state.bossActive = false;
+                AudioEngine.startMusic('stage');
+                
+                addScore(10000); // Boss is worth 10,000 points
+                
+                // BOSS SPAWN MILESTONES (Thresholds)
                 state.bossCount++;
+                const milestones = [10000, 30000, 60000, 100000, 150000];
+                
+                if (state.bossCount < milestones.length) {
+                    // Next boss appears when score reaches this specific number
+                    state.nextBossScore = milestones[state.bossCount];
+                } else {
+                    // Endless mode: Every 100k after the last milestone
+                    state.nextBossScore = state.score + 100000; 
+                }
                 
                 for(let i=0; i<10; i++) {
                       shards.push(new Shard(this.pos.x + (Math.random()-0.5)*50, this.pos.y + (Math.random()-0.5)*50));
@@ -1521,18 +1760,21 @@
             state.xp = 0;
             state.xpNeeded = Math.floor(state.xpNeeded * 1.4);
             updateHud();
+
+            // --- LEVEL UP PULSE ---
+            createExplosion(player.pos.x, player.pos.y, '#fff', 60); 
+            AudioEngine.playSound('bomb'); 
+            shakeScreen(30);
+            
+            // Spawn the shockwave entity
+            shockwaves.push(new Shockwave(player.pos.x, player.pos.y));
         }
 
         function spawnLogic() {
             if (state.bossActive) {
                 if (Math.random() < 0.005) { 
-                    const edge = Math.floor(Math.random() * 4);
-                    let px, py;
-                    if (edge === 0) { px = -width/2 - 40; py = (Math.random()-0.5)*height; }
-                    else if (edge === 1) { px = width/2 + 40; py = (Math.random()-0.5)*height; }
-                    else if (edge === 2) { px = (Math.random()-0.5)*width; py = -height/2 - 40; }
-                    else { px = (Math.random()-0.5)*width; py = height/2 + 40; }
-                    powerups.push(new PowerUp(px, py));
+                    // MODIFIED: Spawn standard enemy instead of Power Up
+                    enemies.push(new Enemy('grunt'));
                 }
                 return;
             }
@@ -1542,6 +1784,24 @@
                 enemies.push(new Boss()); AudioEngine.playSound('boss_spawn'); return;
             }
             if (state.frames % 600 === 0) state.difficulty++;
+
+            // CARRIER SPAWN LOGIC
+            // 1. Check if one exists
+            const carrierExists = enemies.some(e => e.type === 'carrier');
+            
+            if (!carrierExists) {
+                // 2. Probability increases with time since last spawn
+                const timeSince = state.frames - state.lastCarrierSpawn;
+                // Base very rare chance + increasing likelihood over time
+                // Starts at ~0.0005, increases by 0.001 roughly every 16 seconds (1000 frames)
+                let chance = 0.0005 + (timeSince * 0.000001); 
+                
+                if (Math.random() < chance) {
+                    enemies.push(new Enemy('carrier'));
+                    state.lastCarrierSpawn = state.frames; // Reset timer
+                }
+            }
+
             let spawnRate = Math.max(5, 60 - (state.difficulty * 2)); 
             if (state.frames % spawnRate === 0) {
                 const r = Math.random();
@@ -1606,6 +1866,7 @@
             enemies.forEach(e => e.draw());
             shards.forEach(s => s.draw());
             powerups.forEach(p => p.draw());
+            shockwaves.forEach(s => s.draw()); // Draw Shockwaves
             ctx.restore();
 
             // IF PAUSED, HANDLE MENU LOGIC
@@ -1622,6 +1883,7 @@
 
             player.update();
             spawnLogic();
+            shockwaves.forEach(s => s.update()); // Update Shockwaves
 
             bullets.forEach(b => b.update());
             enemies.forEach(e => {
@@ -1700,6 +1962,7 @@
             particles = particles.filter(p => !p.dead);
             powerups = powerups.filter(p => !p.dead);
             shards = shards.filter(s => !s.dead);
+            shockwaves = shockwaves.filter(s => !s.dead);
         }
 
         function startGame(bossTestType = -1) {
@@ -1712,11 +1975,14 @@
             document.getElementById('boss-hp-container').style.display = 'none';
             setTimeout(() => { document.getElementById('start-screen').style.display = 'none'; }, 500);
             player = new Player();
-            bullets = []; enemies = []; powerups = []; particles = []; shards = [];
-            state.score = 0; state.running = true; state.difficulty = 1; state.nextBossScore = 20000; // 20k
+            bullets = []; enemies = []; powerups = []; particles = []; shards = []; shockwaves = [];
+            state.score = 0; state.running = true; state.difficulty = 1; 
+            state.nextBossScore = 10000; // First boss at 10,000 points
             state.bossActive = false; state.bossCount = 0; state.lastBossType = -1;
             state.xp = 0; state.xpNeeded = 10; state.level = 1;
             state.activeOptions = []; state.selectedOptionIndex = 0;
+            state.isBossTest = false; // Reset for a normal run
+            state.lastCarrierSpawn = 0; // Reset carrier timer
             
             // Reset debounce timer
             Input.lastConfirmTime = Date.now();
@@ -1749,8 +2015,9 @@
             }
 
             if (startPressed) {
-                // Debounce: Don't start if we just finished a game or pressed button recently
-                if (Date.now() - Input.lastConfirmTime > 500) {
+                // Removed Debounce check here for initial start to ensure 'A' feels responsive
+                // Only checking if game isn't already running
+                if (!state.running) {
                     startGame();
                     return; 
                 }
