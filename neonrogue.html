@@ -35,6 +35,18 @@
             max-height: 100%;
         }
 
+        /* UI SCALING CLASS (New) */
+        .scalable-ui {
+            position: absolute; 
+            top: 0; 
+            left: 0;
+            /* Set to Logical Resolution so it matches Canvas coordinate space */
+            width: 1000px; 
+            height: 750px; 
+            transform-origin: top left; /* Scale from top-left corner */
+            pointer-events: none; /* Default pass-through */
+        }
+
         /* --- RESPONSIVE LAYOUTS --- */
 
         /* LANDSCAPE (PC / Mobile Horizontal) */
@@ -88,8 +100,8 @@
 
         /* UI LAYOUT */
         #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; display: flex; justify-content: space-between;
+            /* Dimensions now handled by .scalable-ui class */
+            display: flex; justify-content: space-between;
             align-items: flex-start; padding: 20px; box-sizing: border-box; z-index: 5;
         }
 
@@ -149,7 +161,12 @@
         #boss-hp-container { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); width: 400px; height: 20px; border: 2px solid #f00; display: none; }
         #boss-hp-bar { width: 100%; height: 100%; background-color: #f00; box-shadow: 0 0 10px #f00; transition: width 0.1s; }
         #boss-label { text-align: center; color: #f00; margin-top: -25px; font-weight: bold; text-shadow: 0 0 5px #f00; }
-        #level-up-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20; pointer-events: auto; }
+        
+        #level-up-screen { 
+            background: rgba(0,0,0,0.85); display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 20; pointer-events: auto; 
+        }
         #level-up-title { font-size: 3rem; color: #ff0; text-shadow: 0 0 20px #ff0; margin-bottom: 40px; letter-spacing: 5px; text-transform: uppercase; }
         .card-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
         .upgrade-card { width: 220px; height: 300px; border: 2px solid #0ff; background: rgba(0, 20, 20, 0.9); padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; text-align: center; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 0 15px #0ff, inset 0 0 20px rgba(0,255,255,0.1); }
@@ -159,13 +176,23 @@
         .card-desc { font-size: 0.9rem; color: #ccc; line-height: 1.4; }
         .card-stat { margin-top: auto; color: #0f0; font-size: 1.1rem; }
         #dash-status { font-size: 1rem; color: #0ff; text-shadow: 0 0 5px #0ff; margin-top: 5px; }
-        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; pointer-events: auto; transition: opacity 0.5s; }
+        
+        #start-screen { 
+            background: rgba(0,0,0,0.8); display: flex; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 10; pointer-events: auto; transition: opacity 0.5s; 
+        }
         h1 { font-size: 4rem; margin: 0 0 20px 0; color: #fff; text-shadow: 0 0 20px #0ff, 0 0 40px #00f; text-align: center; letter-spacing: 5px; }
         button { background: transparent; border: 2px solid #0f0; color: #0f0; padding: 15px 40px; font-size: 1.5rem; font-family: inherit; cursor: pointer; text-shadow: 0 0 5px #0f0; box-shadow: 0 0 10px #0f0, inset 0 0 10px #0f0; transition: all 0.2s; text-transform: uppercase; }
         button:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0, inset 0 0 20px #0f0; }
         .controls { margin-top: 30px; color: #aaa; text-align: center; line-height: 1.6; padding: 20px; border: 1px solid rgba(170, 170, 170, 0.2); border-radius: 8px; }
         .key { border: 1px solid #666; padding: 2px 6px; border-radius: 4px; background: #222; color: #fff; margin: 0 2px; font-size: 0.9em; }
-        #pause-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 30; pointer-events: auto; }
+        
+        #pause-menu { 
+            background: rgba(0,0,0,0.85); display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 30; pointer-events: auto; 
+        }
         #pause-title { font-size: 3rem; color: #fff; margin-bottom: 40px; letter-spacing: 5px; text-transform: uppercase; text-shadow: 0 0 10px #fff; }
         .menu-btn { background: transparent; border: 2px solid #555; color: #888; padding: 10px 30px; font-size: 1.2rem; font-family: inherit; cursor: pointer; margin: 10px; width: 250px; text-align: center; text-transform: uppercase; transition: all 0.2s; }
         .menu-btn:hover, .menu-btn.selected { border-color: #0ff; color: #0ff; background: #111; box-shadow: 0 0 15px #0ff, inset 0 0 10px rgba(0,255,255,0.2); transform: scale(1.05); }
@@ -191,7 +218,8 @@
             <div id="btn-dash" class="touch-btn">DASH</div>
         </div>
 
-        <div id="ui-layer">
+        <!-- APPLIED SCALABLE-UI CLASS TO ALL INTERFACE LAYERS -->
+        <div id="ui-layer" class="scalable-ui">
             <div class="hud-left">
                 <div id="score-hud">0</div>
                 <div id="level-text">LVL 1</div>
@@ -212,13 +240,13 @@
             </div>
         </div>
 
-        <div id="level-up-screen">
+        <div id="level-up-screen" class="scalable-ui">
             <div id="level-up-title">SYSTEM UPGRADE</div>
             <div class="card-container" id="card-container"></div>
             <div style="color: #888; margin-top: 20px; font-size: 0.8rem;">PAD: L-STICK to Select, 'A' to Confirm</div>
         </div>
 
-        <div id="start-screen">
+        <div id="start-screen" class="scalable-ui">
             <h1>NEON ROGUE</h1>
             <div style="color: #555; font-size: 0.8rem; margin-top: -10px; margin-bottom: 20px;">VERSION 1.1</div>
             <button id="start-btn">INITIATE RUN</button>
@@ -248,7 +276,7 @@
             </div>
         </div>
 
-        <div id="pause-menu">
+        <div id="pause-menu" class="scalable-ui">
             <div id="pause-title">PAUSED</div>
             <button class="menu-btn selected" id="pm-resume">RESUME</button>
             <button class="menu-btn" id="pm-restart">RESTART RUN</button>
@@ -1408,14 +1436,16 @@
 
             // 3. Calculate the Scale Factor
             // We want 1000 logical units to fit into containerW pixels.
-            // This ratio ensures game elements scale up/down with the window.
             scaleFactor = containerW / LOGICAL_WIDTH;
             
-            // Note: We do NOT update global 'width' and 'height' vars to pixel values here.
-            // The game logic relies on them being LOGICAL_WIDTH (1000) and LOGICAL_HEIGHT (750).
-            // However, to ensure the grid wraps correctly, we should update them if we were using pixel physics.
-            // But since we are scaling the Context, the logic continues to run in 1000x750 space.
-            
+            // 4. Scale HTML UI Elements
+            // Since UI elements have fixed 1000x750 size via .scalable-ui class,
+            // we just scale them down/up to match the container width.
+            const uiElements = document.querySelectorAll('.scalable-ui');
+            uiElements.forEach(el => {
+                el.style.transform = `scale(${scaleFactor})`;
+            });
+
             createGrid(); 
         }
 
