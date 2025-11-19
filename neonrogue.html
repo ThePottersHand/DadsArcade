@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Vital for Mobile: Prevents zooming and ensures full screen -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -21,7 +20,8 @@
         }
         canvas {
             display: block;
-            filter: contrast(1.2) brightness(1.1);
+            /* CSS filters are cheaper than Canvas shadowBlur for global bloom looks */
+            filter: contrast(1.2) brightness(1.1); 
         }
         #ui-layer {
             position: absolute;
@@ -174,7 +174,6 @@
 
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Touch Controls -->
     <div id="touch-layer">
         <div id="stick-left" class="joystick-zone"><div id="nub-left" class="joystick-nub"></div></div>
         <div id="stick-right" class="joystick-zone"><div id="nub-right" class="joystick-nub"></div></div>
@@ -220,8 +219,7 @@
     </div>
 
     <script>
-        /** * INPUT MANAGER (Unified) 
-         */
+        /** * INPUT MANAGER (Unified)  */
         const Input = {
             move: { x: 0, y: 0 }, // -1 to 1
             aim: { x: 0, y: 0 },  // -1 to 1 (or mouse pos relative)
@@ -361,64 +359,47 @@
                     const btnDash = document.getElementById('btn-dash');
                     const btnBomb = document.getElementById('btn-bomb');
 
-                    leftZone.addEventListener('touchstart', e => {
+                    const handleStart = (e, zone, touchData, nubId) => {
                         e.preventDefault();
                         const touch = e.changedTouches[0];
-                        this.touchLeft.id = touch.identifier;
-                        this.touchLeft.active = true;
-                        const rect = leftZone.getBoundingClientRect();
-                        this.touchLeft.startX = rect.left + rect.width/2;
-                        this.touchLeft.startY = rect.top + rect.height/2;
-                        this.updateStick(this.touchLeft, touch.clientX, touch.clientY, 'nub-left');
-                    });
-                    leftZone.addEventListener('touchmove', e => {
-                        e.preventDefault();
-                        for(let i=0; i<e.changedTouches.length; i++) {
-                            if(e.changedTouches[i].identifier === this.touchLeft.id) {
-                                this.updateStick(this.touchLeft, e.changedTouches[i].clientX, e.changedTouches[i].clientY, 'nub-left');
-                            }
-                        }
-                    });
-                    const endLeft = (e) => {
-                        for(let i=0; i<e.changedTouches.length; i++) {
-                            if(e.changedTouches[i].identifier === this.touchLeft.id) {
-                                this.touchLeft.active = false;
-                                this.touchLeft.x = 0; this.touchLeft.y = 0;
-                                document.getElementById('nub-left').style.transform = `translate(0px, 0px)`;
-                            }
-                        }
+                        touchData.id = touch.identifier;
+                        touchData.active = true;
+                        const rect = zone.getBoundingClientRect();
+                        touchData.startX = rect.left + rect.width/2;
+                        touchData.startY = rect.top + rect.height/2;
+                        this.updateStick(touchData, touch.clientX, touch.clientY, nubId);
                     };
-                    leftZone.addEventListener('touchend', endLeft);
-                    leftZone.addEventListener('touchcancel', endLeft);
 
-                    rightZone.addEventListener('touchstart', e => {
-                        e.preventDefault();
-                        const touch = e.changedTouches[0];
-                        this.touchRight.id = touch.identifier;
-                        this.touchRight.active = true;
-                        const rect = rightZone.getBoundingClientRect();
-                        this.touchRight.startX = rect.left + rect.width/2;
-                        this.touchRight.startY = rect.top + rect.height/2;
-                        this.updateStick(this.touchRight, touch.clientX, touch.clientY, 'nub-right');
-                    });
-                    rightZone.addEventListener('touchmove', e => {
+                    leftZone.addEventListener('touchstart', e => handleStart(e, leftZone, this.touchLeft, 'nub-left'));
+                    rightZone.addEventListener('touchstart', e => handleStart(e, rightZone, this.touchRight, 'nub-right'));
+
+                    const handleMove = (e, touchData, nubId) => {
                         e.preventDefault();
                         for(let i=0; i<e.changedTouches.length; i++) {
-                            if(e.changedTouches[i].identifier === this.touchRight.id) {
-                                this.updateStick(this.touchRight, e.changedTouches[i].clientX, e.changedTouches[i].clientY, 'nub-right');
-                            }
-                        }
-                    });
-                    const endRight = (e) => {
-                        for(let i=0; i<e.changedTouches.length; i++) {
-                            if(e.changedTouches[i].identifier === this.touchRight.id) {
-                                this.touchRight.active = false;
-                                document.getElementById('nub-right').style.transform = `translate(0px, 0px)`;
+                            if(e.changedTouches[i].identifier === touchData.id) {
+                                this.updateStick(touchData, e.changedTouches[i].clientX, e.changedTouches[i].clientY, nubId);
                             }
                         }
                     };
-                    rightZone.addEventListener('touchend', endRight);
-                    rightZone.addEventListener('touchcancel', endRight);
+
+                    leftZone.addEventListener('touchmove', e => handleMove(e, this.touchLeft, 'nub-left'));
+                    rightZone.addEventListener('touchmove', e => handleMove(e, this.touchRight, 'nub-right'));
+
+                    const handleEnd = (e, touchData, nubId) => {
+                        e.preventDefault();
+                        for(let i=0; i<e.changedTouches.length; i++) {
+                            if(e.changedTouches[i].identifier === touchData.id) {
+                                touchData.active = false;
+                                touchData.x = 0; touchData.y = 0;
+                                document.getElementById(nubId).style.transform = `translate(0px, 0px)`;
+                            }
+                        }
+                    };
+
+                    leftZone.addEventListener('touchend', e => handleEnd(e, this.touchLeft, 'nub-left'));
+                    leftZone.addEventListener('touchcancel', e => handleEnd(e, this.touchLeft, 'nub-left'));
+                    rightZone.addEventListener('touchend', e => handleEnd(e, this.touchRight, 'nub-right'));
+                    rightZone.addEventListener('touchcancel', e => handleEnd(e, this.touchRight, 'nub-right'));
 
                     btnDash.addEventListener('touchstart', (e) => { e.preventDefault(); this.dash = true; });
                     btnDash.addEventListener('touchend', (e) => { e.preventDefault(); this.dash = false; });
@@ -462,7 +443,7 @@
                 this.ctx = new AudioContext();
             },
             playTone: function(freq, type, duration, vol = 0.1, slideTo = null) {
-                if (!this.ctx) return;
+                if (!this.ctx || this.ctx.state === 'suspended') return; // Safely ignore if not ready
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 osc.type = type;
@@ -476,7 +457,7 @@
                 osc.stop(this.ctx.currentTime + duration);
             },
             playNoise: function(duration, vol) {
-                if (!this.ctx) return;
+                if (!this.ctx || this.ctx.state === 'suspended') return;
                 const bufferSize = this.ctx.sampleRate * duration;
                 const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
                 const data = buffer.getChannelData(0);
@@ -529,6 +510,7 @@
 
                 let bassSeq, melodySeq;
 
+                // ... Music Sequences (kept same for brevity) ...
                 if (theme === 'stage') {
                     bassSeq = (step) => {
                          const bar = Math.floor(step / 16) % 16;
@@ -576,6 +558,7 @@
                 }
 
                 this.musicTimer = setInterval(() => {
+                    if (this.ctx.state === 'suspended') return; // Don't queue notes if suspended
                     const step = this.beatCount;
                     const bassNote = bassSeq(step);
                     if (bassNote) this.playTone(bassNote, 'square', 0.1, 0.04);
@@ -657,6 +640,7 @@
                 this.scale = 1; this.dead = false; this.radius = 15;
                 this.enteredArena = false; 
                 this.id = Math.random();
+                this.useShadow = true; // Optimization flag
             }
             update() {
                 this.pos.x += this.vel.x;
@@ -678,7 +662,14 @@
             draw() {
                 if (this.dead) return;
                 ctx.beginPath(); ctx.strokeStyle = this.color; ctx.lineWidth = 2;
-                ctx.shadowBlur = 15; ctx.shadowColor = this.color;
+                
+                // OPTIMIZATION: Only apply shadows to important entities
+                if (this.useShadow) {
+                    ctx.shadowBlur = 15; ctx.shadowColor = this.color;
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+
                 let first = true;
                 for (let v of this.shape) {
                     if (v === null) { first = true; continue; }
@@ -690,6 +681,7 @@
                     if (first) { ctx.moveTo(sx, sy); first = false; } else { ctx.lineTo(sx, sy); }
                 }
                 ctx.stroke();
+                ctx.shadowBlur = 0; // Reset
             }
         }
 
@@ -699,11 +691,13 @@
                 this.vel.x = (Math.random() - 0.5) * 10 * speedMulti;
                 this.vel.y = (Math.random() - 0.5) * 10 * speedMulti;
                 this.life = 30 + Math.random() * 20; this.maxLife = this.life;
+                this.useShadow = false; // Optimization
             }
             draw() {
                 if (this.dead) return;
                 ctx.fillStyle = this.color; ctx.globalAlpha = this.life / this.maxLife;
-                ctx.shadowBlur = 5; ctx.shadowColor = this.color;
+                // OPTIMIZATION: No shadows on particles
+                ctx.shadowBlur = 0;
                 ctx.fillRect(this.pos.x+width/2, this.pos.y+height/2, 3, 3);
                 ctx.globalAlpha = 1.0;
                 this.pos.x += this.vel.x; this.pos.y += this.vel.y;
@@ -724,6 +718,7 @@
                 this.enteredArena = true; 
                 this.dashCooldown = 0;
                 this.dashTimer = 0;
+                this.useShadow = true; // Player keeps shadow
                 
                 // RPG Stats (Build)
                 this.stats = {
@@ -890,6 +885,7 @@
                 this.vel.x = (Math.random() - 0.5) * 2;
                 this.vel.y = (Math.random() - 0.5) * 2;
                 this.radius = 15;
+                this.useShadow = false;
             }
             update() {
                 super.update();
@@ -932,6 +928,7 @@
                 this.vel.y = (Math.random() - 0.5) * 1.5;
                 this.rotVel = { x: 0.02, y: 0.05, z: 0.02 };
                 this.radius = 20;
+                this.useShadow = true; 
             }
             
             update() {
@@ -965,6 +962,7 @@
                 this.damage = damage;
                 this.piercing = piercing; 
                 this.hitIds = []; 
+                this.useShadow = false; // OPTIMIZATION: No shadows on bullets
                 
                 let speed = isEnemy ? 6 : 15;
                 if (speedOverride !== null) speed = speedOverride;
@@ -1010,6 +1008,7 @@
 
                 super(ex, ey, shape, color);
                 this.type = type; this.hp = hp; this.maxHp = hp; this.scoreVal = scoreVal;
+                this.useShadow = false; // Optimization
             }
             update() {
                 super.update();
@@ -1089,6 +1088,7 @@
                 this.attackState = 0; 
                 this.vel.y = 3; 
                 this.enteredArena = true;
+                this.useShadow = true; // Bosses need to look cool
                 
                 document.getElementById('boss-hp-container').style.display = 'block';
                 const names = ["THE CORE", "INTERCEPTOR", "FORTRESS", "DYNAMO", "TITAN"];
@@ -1237,7 +1237,7 @@
                 state.bossCount++;
                 
                 for(let i=0; i<10; i++) {
-                     shards.push(new Shard(this.pos.x + (Math.random()-0.5)*50, this.pos.y + (Math.random()-0.5)*50));
+                      shards.push(new Shard(this.pos.x + (Math.random()-0.5)*50, this.pos.y + (Math.random()-0.5)*50));
                 }
                 
                 powerups.push(new PowerUp(this.pos.x, this.pos.y, 'BOMB'));
@@ -1259,7 +1259,9 @@
 
         class GridLine {
             constructor(p1, p2) { this.p1 = p1; this.p2 = p2; this.baseP1 = { ...p1 }; this.baseP2 = { ...p2 }; }
-            updateAndDraw() {
+            
+            // New optimized method: just adds to the path, doesn't stroke
+            addToPath(ctx) {
                 const offsetX = -player.pos.x * 0.2; const offsetY = -player.pos.y * 0.2;
                 let x1 = (this.baseP1.x + offsetX) % (width * 1.5); let y1 = (this.baseP1.y + offsetY) % (height * 1.5);
                 let x2 = (this.baseP2.x + offsetX) % (width * 1.5); let y2 = (this.baseP2.y + offsetY) % (height * 1.5);
@@ -1267,8 +1269,11 @@
                 if (y1 < -height/2) y1 += height*1.5; if (y1 > height) y1 -= height*1.5;
                 if (x2 < -width/2) x2 += width*1.5; if (x2 > width) x2 -= width*1.5;
                 if (y2 < -height/2) y2 += height*1.5; if (y2 > height) y2 -= height*1.5;
+                
+                // Simple culling
                 if (Math.abs(x1-x2) < 100 && Math.abs(y1-y2) < 100) {
-                    ctx.beginPath(); ctx.moveTo(x1 + width/2, y1 + height/2); ctx.lineTo(x2 + width/2, y2 + height/2); ctx.stroke();
+                     ctx.moveTo(x1 + width/2, y1 + height/2); 
+                     ctx.lineTo(x2 + width/2, y2 + height/2); 
                 }
             }
         }
@@ -1289,7 +1294,6 @@
         function createGrid() {
             grid = []; const step = 80;
             const countX = Math.ceil((window.innerWidth * 1.5) / step); const countY = Math.ceil((window.innerHeight * 1.5) / step);
-            ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
             for (let i = -countX; i < countX; i++) grid.push(new GridLine({x: i*step, y: -height}, {x: i*step, y: height}));
             for (let i = -countY; i < countY; i++) grid.push(new GridLine({x: -width, y: i*step}, {x: width, y: i*step}));
         }
@@ -1326,8 +1330,14 @@
         
         function updateBossUI(percent) { document.getElementById('boss-hp-bar').style.width = percent + '%'; }
 
-        function startGame() {
+        async function startGame() {
             AudioEngine.init();
+            
+            // FIX FOR IPAD AUDIO: Resume context on user gesture
+            if (AudioEngine.ctx.state === 'suspended') {
+                await AudioEngine.ctx.resume();
+            }
+
             AudioEngine.startMusic('stage'); 
             document.getElementById('start-screen').style.opacity = 0;
             document.getElementById('boss-hp-container').style.display = 'none';
@@ -1486,7 +1496,15 @@
                 if(!state.paused) shake *= 0.9; if (shake < 0.5) shake = 0;
             }
             ctx.save(); ctx.translate(sx, sy);
-            grid.forEach(g => g.updateAndDraw());
+            
+            // OPTIMIZED GRID RENDERING: Batch processing
+            ctx.beginPath();
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            ctx.shadowBlur = 0; // Ensure no shadow on grid
+            grid.forEach(g => g.addToPath(ctx));
+            ctx.stroke();
+            
             particles.forEach(p => p.draw());
             player.draw();
             bullets.forEach(b => b.draw());
