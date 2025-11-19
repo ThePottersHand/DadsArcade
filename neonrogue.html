@@ -140,7 +140,17 @@
         #touch-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 25; pointer-events: none; display: none; /* Hidden by default */
+            transition: opacity 0.5s ease-out; /* Smooth fade for controller users */
+            opacity: 1;
         }
+        /* Helper class to disable interactions when faded */
+        #touch-layer.faded {
+            opacity: 0;
+        }
+        #touch-layer.faded * {
+            pointer-events: none !important;
+        }
+
         .joystick-zone {
             position: absolute; bottom: 50px; width: 150px; height: 150px;
             pointer-events: auto; border-radius: 50%;
@@ -234,6 +244,7 @@
             
             usingMouse: true, 
             mouseX: 0, mouseY: 0,
+            inputType: 'mouse', // 'mouse', 'touch', 'gamepad'
 
             // Key State
             keys: {},
@@ -248,6 +259,7 @@
                     this.keys[e.key.toLowerCase()] = true; 
                     if (e.key === ' ') this.bomb = true;
                     if (e.key === 'Shift') this.dash = true;
+                    this.setInputType('keyboard');
                 });
                 window.addEventListener('keyup', e => { 
                     this.keys[e.key.toLowerCase()] = false; 
@@ -257,18 +269,39 @@
                 window.addEventListener('mousemove', e => { 
                     this.mouseX = e.clientX; this.mouseY = e.clientY; 
                     this.usingMouse = true;
+                    // Don't switch to mouse mode just on move (prevents jitter with controller), only click
                 });
                 window.addEventListener('mousedown', () => {
                     this.isFiring = true;
-                    this.confirm = true; // Mouse click confirms too
+                    this.confirm = true; 
+                    this.setInputType('mouse');
                 });
                 window.addEventListener('mouseup', () => {
                     this.isFiring = false;
                     this.confirm = false;
                 });
 
+                // Global touch listener to wake up touch controls
+                window.addEventListener('touchstart', () => this.setInputType('touch'));
+
                 // Touch Handling
                 this.setupTouch();
+            },
+
+            setInputType: function(type) {
+                if (this.inputType === type) return;
+                this.inputType = type;
+                
+                const touchLayer = document.getElementById('touch-layer');
+                if (touchLayer) {
+                    if (type === 'gamepad') {
+                        touchLayer.classList.add('faded');
+                    } else if (type === 'touch') {
+                        touchLayer.classList.remove('faded');
+                    }
+                    // Keep visible for mouse/keyboard for now unless we want to hide it there too
+                    // Currently specific request was fade if controller used.
+                }
             },
 
             update: function() {
@@ -286,11 +319,13 @@
                 if (this.keys['enter']) this.confirm = true;
 
                 // 2. Gamepad Input (Analog)
-                const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+                // Scan ALL gamepads for the first active one (Fixes iPad/Bluetooth slot issues)
+                const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                const gamepad = Array.from(gamepads).find(gp => gp !== null && gp.connected);
+
                 let gx = 0, gy = 0, ax = 0, ay = 0;
                 
                 if (gamepad) {
-                    this.usingMouse = false;
                     const dead = 0.15;
                     
                     // Move Stick (Axes 0, 1)
@@ -301,22 +336,29 @@
                     if (Math.abs(gamepad.axes[2]) > dead) ax = gamepad.axes[2];
                     if (Math.abs(gamepad.axes[3]) > dead) ay = gamepad.axes[3];
 
+                    // Detect Activity to Switch Input Mode
+                    const isActivity = Math.abs(gx) > dead || Math.abs(gy) > dead || Math.abs(ax) > dead || Math.abs(ay) > dead || gamepad.buttons.some(b => b.pressed);
+                    if (isActivity) {
+                        this.usingMouse = false;
+                        this.setInputType('gamepad');
+                    }
+
                     // Fire
                     if (Math.hypot(ax, ay) > 0.3) this.isFiring = true;
-                    else this.isFiring = false;
+                    else if (this.inputType === 'gamepad') this.isFiring = false;
 
                     // --- BUTTON MAPPING UPDATE ---
                     // L1 (4) or L2 (6) -> DASH
                     if (gamepad.buttons[4].pressed || gamepad.buttons[6].pressed) this.dash = true; 
-                    else this.dash = false; 
+                    else if (this.inputType === 'gamepad') this.dash = false; 
                     
                     // R1 (5) or R2 (7) -> BOMB
                     if (gamepad.buttons[5].pressed || gamepad.buttons[7].pressed) this.bomb = true; 
-                    else this.bomb = false;
+                    else if (this.inputType === 'gamepad') this.bomb = false;
 
                     // A Button (0) -> Confirm
                     if (gamepad.buttons[0].pressed) this.confirm = true;
-                    else this.confirm = false;
+                    else if (this.inputType === 'gamepad') this.confirm = false;
 
                     // Menu Nav via D-Pad or Stick
                     if (gx < -0.5) this.menuMove = -1;
@@ -325,7 +367,12 @@
 
                 // 3. Touch Input
                 if (this.touchActive) {
-                    this.usingMouse = false;
+                    // If touch is active, override mouse
+                    if (this.touchLeft.active || this.touchRight.active) {
+                        this.usingMouse = false;
+                        this.setInputType('touch');
+                    }
+
                     if (this.touchLeft.active) {
                         kx = this.touchLeft.x; ky = this.touchLeft.y;
                     }
@@ -333,18 +380,21 @@
                         ax = this.touchRight.x; ay = this.touchRight.y;
                         this.isFiring = true;
                     } else if (!gamepad) {
+                        // Only clear firing if not using gamepad
                         this.isFiring = false; 
                     }
                 }
 
                 // Combine Inputs
-                if (gamepad) {
+                if (this.inputType === 'gamepad') {
                     this.move.x = gx; this.move.y = gy;
                 } else {
                     this.move.x = kx; this.move.y = ky;
                 }
 
-                if (!this.usingMouse) {
+                if (!this.usingMouse && this.inputType !== 'gamepad') {
+                    this.aim.x = ax; this.aim.y = ay;
+                } else if (this.inputType === 'gamepad') {
                     this.aim.x = ax; this.aim.y = ay;
                 }
 
@@ -362,13 +412,15 @@
                 if ('ontouchstart' in window || navigator.maxTouchPoints) {
                     document.getElementById('touch-layer').style.display = 'block';
                     this.touchActive = true;
-
+                    // ... existing touch setup code ...
+                    
                     const leftZone = document.getElementById('stick-left');
                     const rightZone = document.getElementById('stick-right');
                     const btnDash = document.getElementById('btn-dash');
                     const btnBomb = document.getElementById('btn-bomb');
 
                     leftZone.addEventListener('touchstart', e => {
+                        this.setInputType('touch');
                         e.preventDefault();
                         const touch = e.changedTouches[0];
                         this.touchLeft.id = touch.identifier;
@@ -386,6 +438,7 @@
                             }
                         }
                     });
+                    // ... rest of touch event listeners (endLeft, touchcancel etc)
                     const endLeft = (e) => {
                         for(let i=0; i<e.changedTouches.length; i++) {
                             if(e.changedTouches[i].identifier === this.touchLeft.id) {
@@ -399,6 +452,7 @@
                     leftZone.addEventListener('touchcancel', endLeft);
 
                     rightZone.addEventListener('touchstart', e => {
+                        this.setInputType('touch');
                         e.preventDefault();
                         const touch = e.changedTouches[0];
                         this.touchRight.id = touch.identifier;
@@ -416,6 +470,7 @@
                             }
                         }
                     });
+                    // ... rest of right stick listeners
                     const endRight = (e) => {
                         for(let i=0; i<e.changedTouches.length; i++) {
                             if(e.changedTouches[i].identifier === this.touchRight.id) {
@@ -427,9 +482,9 @@
                     rightZone.addEventListener('touchend', endRight);
                     rightZone.addEventListener('touchcancel', endRight);
 
-                    btnDash.addEventListener('touchstart', (e) => { e.preventDefault(); this.dash = true; });
+                    btnDash.addEventListener('touchstart', (e) => { this.setInputType('touch'); e.preventDefault(); this.dash = true; });
                     btnDash.addEventListener('touchend', (e) => { e.preventDefault(); this.dash = false; });
-                    btnBomb.addEventListener('touchstart', (e) => { e.preventDefault(); this.bomb = true; });
+                    btnBomb.addEventListener('touchstart', (e) => { this.setInputType('touch'); e.preventDefault(); this.bomb = true; });
                     btnBomb.addEventListener('touchend', (e) => { e.preventDefault(); this.bomb = false; });
                 }
             },
@@ -707,44 +762,36 @@
             }
             draw() {
                 if (this.dead) return;
-                
-                // OPTIMIZATION: Localize math to avoid GC (Garbage Collection) stutter on iPad
+
+                // OPTIMIZATION: Zero-Allocation Rotation Logic
+                // This prevents the iPad from creating/destroying thousands of 'Vec3' objects per frame.
                 const cx = Math.cos(this.rotation.x), sx = Math.sin(this.rotation.x);
                 const cy = Math.cos(this.rotation.y), sy = Math.sin(this.rotation.y);
                 const cz = Math.cos(this.rotation.z + this.angle), sz = Math.sin(this.rotation.z + this.angle);
 
-                ctx.beginPath(); 
-                ctx.strokeStyle = this.color; 
-                ctx.lineWidth = 2;
-                
-                // Keep glow for main entities, but we will disable it for bullets/particles to save GPU
-                ctx.shadowBlur = 15; 
-                ctx.shadowColor = this.color;
-                
+                ctx.beginPath(); ctx.strokeStyle = this.color; ctx.lineWidth = 2;
+                ctx.shadowBlur = 15; ctx.shadowColor = this.color;
                 let first = true;
                 for (let v of this.shape) {
                     if (v === null) { first = true; continue; }
                     
-                    // Inline 3D Rotation to prevent 'new Vec3' allocation (huge performance win)
-                    // 1. Rotate X
-                    const rx_y = v.y * cx - v.z * sx;
-                    const rx_z = v.y * sx + v.z * cx;
-                    
-                    // 2. Rotate Y
-                    const ry_x = v.x * cy + rx_z * sy;
-                    const ry_z = -v.x * sy + rx_z * cy;
+                    // Inline Math (Rotate X, then Y, then Z)
+                    const ry_y = v.y * cx - v.z * sx;
+                    const ry_z = v.y * sx + v.z * cx;
 
-                    // 3. Rotate Z (and Angle)
-                    const rz_x = ry_x * cz - rx_y * sz; 
-                    const rz_y = ry_x * sz + rx_y * cz;
+                    const rz_x = v.x * cy + ry_z * sy;
+                    const rz_z = -v.x * sy + ry_z * cy;
 
-                    const sx_draw = (rz_x * this.scale) + this.pos.x + width/2;
-                    const sy_draw = (rz_y * this.scale) + this.pos.y + height/2;
-                    
+                    const final_x = rz_x * cz - ry_y * sz; 
+                    const final_y = rz_x * sz + ry_y * cz;
+
+                    const sx_draw = (final_x * this.scale) + this.pos.x + width/2;
+                    const sy_draw = (final_y * this.scale) + this.pos.y + height/2;
+
                     if (first) { ctx.moveTo(sx_draw, sy_draw); first = false; } else { ctx.lineTo(sx_draw, sy_draw); }
                 }
                 ctx.stroke();
-                ctx.shadowBlur = 0; // Reset
+                ctx.shadowBlur = 0; // CRITICAL: Reset shadow so it doesn't bleed into the Grid next frame
             }
         }
 
@@ -758,10 +805,7 @@
             draw() {
                 if (this.dead) return;
                 ctx.fillStyle = this.color; ctx.globalAlpha = this.life / this.maxLife;
-                // OPTIMIZATION: Disable shadowBlur for particles. 
-                // On Retina/iPad screens, blurring hundreds of particles kills fill-rate.
-                ctx.shadowBlur = 0; 
-                
+                ctx.shadowBlur = 0; // Optimization: No shadows on particles (saves GPU)
                 ctx.fillRect(this.pos.x+width/2, this.pos.y+height/2, 3, 3);
                 ctx.globalAlpha = 1.0;
                 this.pos.x += this.vel.x; this.pos.y += this.vel.y;
@@ -1016,9 +1060,9 @@
 
         class Bullet extends Entity {
             constructor(x, y, angle, isEnemy = false, damage = 1, piercing = 0, speedOverride = null) {
-                const shape = [new Vec3(0,-5,0), new Vec3(0,5,0)]; // Unused now in optimized draw
+                const shape = [new Vec3(0,-5,0), new Vec3(0,5,0)];
                 super(x, y, shape, isEnemy ? '#f00' : '#ff0'); 
-                this.angle = angle + Math.PI/2;
+                this.angle = angle; // Fixed: Aligned with velocity (removed + Math.PI/2)
                 this.isEnemy = isEnemy;
                 this.damage = damage;
                 this.piercing = piercing; 
@@ -1038,28 +1082,41 @@
                 if (Math.random() > 0.8) particles.push(new Particle(this.pos.x, this.pos.y, this.color, 0.5)); 
                 if(Math.abs(this.pos.x) > width/2 + 50 || Math.abs(this.pos.y) > height/2 + 50) this.dead = true;
             }
-
-            // OPTIMIZATION: Custom draw for bullets to avoid loop and shadow overhead
             draw() {
                 if (this.dead) return;
                 
-                ctx.beginPath();
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 2;
-                ctx.shadowBlur = 0; // No shadow on bullets (saves massive GPU during bullet hell)
+                // "HAPPY MEDIUM" / "FAKE GLOW" RENDERER
+                // Draws a thick transparent line (glow) + thin solid line (core)
+                // Much faster than shadowBlur on mobile, but looks better than plain lines.
                 
-                // Optimized manual line draw
-                const len = 5;
+                const len = 10; // Slightly longer for better visibility
                 const xOff = Math.cos(this.angle) * len;
                 const yOff = Math.sin(this.angle) * len;
-                
                 const px = this.pos.x + width/2;
                 const py = this.pos.y + height/2;
-                
+
+                ctx.shadowBlur = 0; // Ensure native blur is off
+                ctx.lineCap = "round";
+
+                // 1. The Fake Glow
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 6;
+                ctx.globalAlpha = 0.4;
                 ctx.moveTo(px - xOff, py - yOff);
                 ctx.lineTo(px + xOff, py + yOff);
-                
                 ctx.stroke();
+
+                // 2. The Core
+                ctx.beginPath();
+                ctx.strokeStyle = this.isEnemy ? "#fff" : "#ff0"; // Fixed: Yellow core for player
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 1.0;
+                ctx.moveTo(px - xOff, py - yOff);
+                ctx.lineTo(px + xOff, py + yOff);
+                ctx.stroke();
+                
+                ctx.lineCap = "butt"; // Reset
             }
         }
 
@@ -1341,7 +1398,7 @@
         class GridLine {
             constructor(p1, p2) { this.p1 = p1; this.p2 = p2; this.baseP1 = { ...p1 }; this.baseP2 = { ...p2 }; }
             updateAndDraw() {
-                ctx.shadowBlur = 0; // Ensure shadows are off for grid
+                ctx.shadowBlur = 0; // FORCE RESET: Prevents grid from inheriting glow from previous frame
                 const offsetX = -player.pos.x * 0.2; const offsetY = -player.pos.y * 0.2;
                 let x1 = (this.baseP1.x + offsetX) % (width * 1.5); let y1 = (this.baseP1.y + offsetY) % (height * 1.5);
                 let x2 = (this.baseP2.x + offsetX) % (width * 1.5); let y2 = (this.baseP2.y + offsetY) % (height * 1.5);
@@ -1389,13 +1446,16 @@
             
             Input.update();
             
-            // Check for Gamepad Start (Usually Button 9) or Confirm (A/Button 0)
-            const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-            let startPressed = Input.keys['enter']; // Keep key support
+            // Check ALL gamepads for Start (Button 9) or Confirm (A/Button 0)
+            // This fixes issues where the controller isn't index 0 (common on iOS/Bluetooth)
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            let startPressed = Input.keys['enter']; 
             
-            if (gamepad) {
-                if (gamepad.buttons[0].pressed) startPressed = true; // A
-                if (gamepad.buttons[9] && gamepad.buttons[9].pressed) startPressed = true; // Start
+            for (let gp of gamepads) {
+                if (gp && gp.connected) {
+                    if (gp.buttons[0].pressed) startPressed = true; // A
+                    if (gp.buttons[9] && gp.buttons[9].pressed) startPressed = true; // Start
+                }
             }
 
             if (startPressed) {
