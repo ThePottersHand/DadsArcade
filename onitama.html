@@ -428,84 +428,66 @@
 
         // --- ONLINE LOGIC EXPORTS ---
         window.createOnlineRoom = async function() {
-            if (!window.db) { alert("Firebase not configured!"); return; }
-            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
-
-            const btn = document.getElementById('btn-create');
-            btn.innerText = "Creating...";
-            btn.disabled = true;
+            if (!window.db) { alert("Firebase not configured! Please edit the index.html file."); return; }
             
-            try {
-                const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-                window.roomId = code;
-                window.playerColor = 'blue'; // Creator is Blue
-                window.isOnline = true;
+            const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+            window.roomId = code;
+            window.playerColor = 'blue'; // Creator is Blue
+            window.isOnline = true;
 
-                // Generate Start State
-                const startState = generateInitialState();
-                startState.players = { blue: window.myId, red: null };
-                startState.status = 'waiting';
-                startState.chat = [];
-
-                await setDoc(doc(window.db, "rooms", code), startState);
-
-                document.getElementById('lobby-controls').classList.add('hidden');
-                document.getElementById('waiting-room').classList.remove('hidden');
-                document.getElementById('display-room-code').innerText = code;
-
-                subscribeToRoom(code);
-            } catch (error) {
-                console.error("Create Room Error:", error);
-                alert("Error creating room: " + error.message + "\n\nDid you enable Firestore in Test Mode?");
-                btn.innerText = "Create Room";
-                btn.disabled = false;
+            // Generate Start State using the GLOBAL function (window.generateInitialState)
+            // logic was previously blocked by a local placeholder function
+            if (typeof window.generateInitialState !== 'function') {
+                alert("Game logic not loaded yet. Please wait a moment and try again.");
+                return;
             }
+            
+            const startState = window.generateInitialState();
+            startState.players = { blue: window.myId, red: null };
+            startState.status = 'waiting';
+            startState.chat = [];
+
+            await setDoc(doc(window.db, "rooms", code), startState);
+
+            document.getElementById('lobby-controls').classList.add('hidden');
+            document.getElementById('waiting-room').classList.remove('hidden');
+            document.getElementById('display-room-code').innerText = code;
+
+            subscribeToRoom(code);
         }
 
         window.joinOnlineRoom = async function() {
             if (!window.db) { alert("Firebase not configured!"); return; }
-            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
-
             const code = document.getElementById('room-code-input').value.toUpperCase();
             if (code.length !== 4) { alert("Invalid Code"); return; }
+
+            const roomRef = doc(window.db, "rooms", code);
+            const snap = await getDoc(roomRef);
+
+            if (!snap.exists()) { alert("Room not found"); return; }
+            const data = snap.data();
+            if (data.players.red) { alert("Room full"); return; }
+
+            // Join as Red
+            await updateDoc(roomRef, {
+                "players.red": window.myId,
+                "status": "playing"
+            });
+
+            window.roomId = code;
+            window.playerColor = 'red';
+            window.isOnline = true;
             
-            const btn = document.getElementById('btn-join');
-            btn.innerText = "Joining...";
-            btn.disabled = true;
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+            document.getElementById('chat-messages').style.display = 'block';
 
-            try {
-                const roomRef = doc(window.db, "rooms", code);
-                const snap = await getDoc(roomRef);
-
-                if (!snap.exists()) { alert("Room not found"); btn.innerText = "Join Room"; btn.disabled = false; return; }
-                const data = snap.data();
-                if (data.players.red) { alert("Room full"); btn.innerText = "Join Room"; btn.disabled = false; return; }
-
-                // Join as Red
-                await updateDoc(roomRef, {
-                    "players.red": window.myId,
-                    "status": "playing"
-                });
-
-                window.roomId = code;
-                window.playerColor = 'red';
-                window.isOnline = true;
-                
-                document.getElementById('lobby-screen').classList.add('hidden');
-                document.getElementById('ui-layer').classList.remove('hidden');
-                document.getElementById('chat-messages').style.display = 'block';
-
-                subscribeToRoom(code);
-            } catch (error) {
-                console.error("Join Room Error:", error);
-                alert("Error joining room: " + error.message);
-                btn.innerText = "Join Room";
-                btn.disabled = false;
-            }
+            subscribeToRoom(code);
         }
 
         function subscribeToRoom(code) {
             onSnapshot(doc(window.db, "rooms", code), (doc) => {
+                if (!doc.exists()) return;
                 const data = doc.data();
                 
                 // Handle Status Changes
@@ -515,22 +497,22 @@
                     document.getElementById('ui-layer').classList.remove('hidden');
                     document.getElementById('chat-messages').style.display = 'block';
                     // Initial Board Load
-                    loadGameState(data);
+                    if (data.board) loadGameState(data);
                 }
 
                 // Handle Moves
                 if (data.status === 'playing') {
                     // Sync Board
-                    syncGameState(data);
+                    if (data.board) syncGameState(data);
                 }
                 
                 // Handle Win
-                if (data.status.startsWith('winner-')) {
+                if (data.status && data.status.startsWith('winner-')) {
                     declareWin(data.status.split('-')[1], "Online Match");
                 }
 
                 // Handle Chat
-                renderChat(data.chat);
+                if (data.chat) renderChat(data.chat);
             });
         }
 
@@ -572,6 +554,10 @@
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
             if(!chatArray) return;
+            
+            // Sort just in case, though arrayUnion usually appends
+            // chatArray.sort((a,b) => a.time - b.time);
+
             chatArray.forEach(msg => {
                 const div = document.createElement('div');
                 div.style.marginBottom = '5px';
@@ -580,18 +566,6 @@
                 container.appendChild(div);
             });
             container.scrollTop = container.scrollHeight;
-        }
-
-        // --- HELPERS ---
-        function generateInitialState() {
-            // Logic to generate cards and slots identical to initGame()
-            // We will actually let the existing initGame() logic run, then extract the state.
-            // But we need to do this without drawing.
-            // For MVP: Reuse the global logic but only inside the host.
-            // See window.initGame adaptation below.
-            return {
-                // Placeholder, actual logic is in the main script
-            };
         }
     </script>
 
