@@ -412,7 +412,7 @@
         window.isOnline = false;
         window.playerColor = 'blue'; // 'blue' or 'red'
 
-        // Init Firebase if config is present
+        // Init Firebase
         if (firebaseConfig.apiKey) {
             const app = initializeApp(firebaseConfig);
             window.db = getFirestore(app);
@@ -428,31 +428,37 @@
 
         // --- ONLINE LOGIC EXPORTS ---
         window.createOnlineRoom = async function() {
-            if (!window.db) { alert("Firebase not configured!"); return; }
-            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
-
+            if (!window.db) { alert("Firebase not configured! Please edit the index.html file."); return; }
+            
             const btn = document.getElementById('btn-create');
             btn.innerText = "Creating...";
             btn.disabled = true;
             
             try {
+                // Wait for local logic to load if needed
+                if (typeof window.generateInitialState !== 'function') {
+                    throw new Error("Game logic not ready. Please wait.");
+                }
+
                 const code = Math.random().toString(36).substring(2, 6).toUpperCase();
                 window.roomId = code;
                 window.playerColor = 'blue'; // Creator is Blue
                 window.isOnline = true;
 
-                // Ensure we use window.generateInitialState which is defined below in the main script
-                // We wait a tick if necessary, but it should be loaded
-                if (typeof window.generateInitialState !== 'function') {
-                    throw new Error("Game logic not loaded. Refresh and try again.");
-                }
-
                 const startState = window.generateInitialState();
-                startState.players = { blue: window.myId, red: null };
-                startState.status = 'waiting';
-                startState.chat = [];
+                // Serialize the board to avoid Firestore nested array issues
+                const serialBoard = JSON.stringify(startState.board);
+                
+                const firebaseState = {
+                    board: serialBoard,
+                    turn: startState.turn,
+                    slots: startState.slots,
+                    players: { blue: window.myId, red: null },
+                    status: 'waiting',
+                    chat: []
+                };
 
-                await setDoc(doc(window.db, "rooms", code), startState);
+                await setDoc(doc(window.db, "rooms", code), firebaseState);
 
                 document.getElementById('lobby-controls').classList.add('hidden');
                 document.getElementById('waiting-room').classList.remove('hidden');
@@ -469,8 +475,6 @@
 
         window.joinOnlineRoom = async function() {
             if (!window.db) { alert("Firebase not configured!"); return; }
-            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
-
             const code = document.getElementById('room-code-input').value.toUpperCase();
             if (code.length !== 4) { alert("Invalid Code"); return; }
             
@@ -520,13 +524,13 @@
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('ui-layer').classList.remove('hidden');
                     document.getElementById('chat-messages').style.display = 'block';
+                    
                     // Initial Board Load
                     if (data.board) loadGameState(data);
                 }
 
                 // Handle Moves
                 if (data.status === 'playing') {
-                    // Sync Board
                     if (data.board) syncGameState(data);
                 }
                 
@@ -543,14 +547,16 @@
         window.pushMoveToFirebase = async function(newState, moveDetails) {
             if (!window.roomId) return;
             
+            // Serialize board for save
+            const serialBoard = JSON.stringify(newState.board);
+            
             const updateData = {
-                board: newState.board, // Need to serialize this carefully
+                board: serialBoard,
                 turn: newState.turn,
                 slots: newState.slots,
                 lastMove: moveDetails
             };
 
-            // If win
             if (newState.gameOver) {
                 updateData.status = `winner-${newState.winner}`;
             }
@@ -621,7 +627,7 @@
         };
 
         let gameState = {
-            board: Array(5).fill(null).map(() => Array(5).fill(null)), // Initialize to avoid crashes
+            board: Array(5).fill(null).map(() => Array(5).fill(null)), // Initialize
             turn: 'blue',
             slots: {},
             selectedCardSlot: null,
@@ -688,7 +694,6 @@
             else { camera.position.set(0, 55, 45); camera.lookAt(0, -2, 0); }
         }
 
-        // --- ASSETS (Simplified for brevity) ---
         function createRoundedBox(w, h, d, r, color) {
             const geometry = new THREE.BoxGeometry(w, h, d);
             const material = new THREE.MeshPhysicalMaterial({ color: color, metalness: 0.1, roughness: 0.6 });
@@ -698,13 +703,11 @@
         }
 
         function createEnvironment() {
-            // Island
             const island = new THREE.Mesh(new THREE.CylinderGeometry(32, 18, 10, 64), new THREE.MeshStandardMaterial({ color: 0x5D4037 }));
             island.position.y = -6; island.receiveShadow = true; scene.add(island);
             const grass = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 64), new THREE.MeshStandardMaterial({ color: 0x7DCEA0 }));
             grass.position.y = -1.1; grass.receiveShadow = true; scene.add(grass);
             
-            // Trees & Particles (Simplified logic from previous versions included)
             const createTree = (x, z) => {
                 const g = new THREE.Group();
                 const t = createRoundedBox(1.2, 4, 1.2, 0, 0x5D4037); t.position.y = 2; g.add(t);
@@ -767,22 +770,16 @@
         }
 
         window.generateInitialState = function() {
-             // Use the same logic as initGame but return data object
             const allCards = Object.keys(CARDS);
             for (let i = allCards.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
             }
             
-            // Board Array Representation
-            // 5x5 array of strings: "red-student", "blue-master", or null
             let boardState = Array(5).fill(null).map(() => Array(5).fill(null));
-            // Red (Top 0)
             boardState[0][0] = 'red-student'; boardState[0][1] = 'red-student'; boardState[0][2] = 'red-master'; boardState[0][3] = 'red-student'; boardState[0][4] = 'red-student';
-            // Blue (Bottom 4)
             boardState[4][0] = 'blue-student'; boardState[4][1] = 'blue-student'; boardState[4][2] = 'blue-master'; boardState[4][3] = 'blue-student'; boardState[4][4] = 'blue-student';
 
-            // Start turn logic
             let turn = Math.random() > 0.5 ? 'red' : 'blue';
             let slots = {
                 'red_1': allCards[0], 'red_2': allCards[1],
@@ -795,13 +792,19 @@
         }
 
         window.loadGameState = function(data) {
-            // Render board from data
             while(piecesGroup.children.length > 0) piecesGroup.remove(piecesGroup.children[0]);
+            
+            // Deserialize if string (Online), else use direct (Local)
+            let boardData = data.board;
+            if (typeof boardData === 'string') {
+                try { boardData = JSON.parse(boardData); } catch(e) { console.error("Parse Error", e); return; }
+            }
+            
             gameState.board = Array(5).fill(null).map(() => Array(5).fill(null));
             
             for(let r=0; r<5; r++) {
                 for(let c=0; c<5; c++) {
-                    const val = data.board[r][c]; // "red-student"
+                    const val = boardData[r][c];
                     if(val) {
                         const [owner, type] = val.split('-');
                         const mesh = createPawn(type, owner);
@@ -819,17 +822,10 @@
         }
 
         window.syncGameState = function(data) {
-            // Called when network updates. 
-            // If we have a lastMove in data, animate it, then snap to state
-            if (data.lastMove) {
-                // Simple implementation: Snap to new state for now to avoid desync
-                // A full implementation would animate the piece from A to B
-            }
-            // Snap
+            // Just snap for now
             loadGameState(data);
             
-            // If game over
-            if (data.status.startsWith('winner')) {
+            if (data.status && data.status.startsWith('winner')) {
                 declareWin(data.status.split('-')[1], "Online Match");
             }
         }
@@ -860,12 +856,8 @@
         }
 
         function onMouseDown(event) {
-            // Guard: If Lobby is visible, ignore clicks on board
             if (!document.getElementById('lobby-screen').classList.contains('hidden')) return;
-            
             if (gameState.gameOver) return;
-            
-            // Online Check
             if (window.isOnline && gameState.turn !== window.playerColor) return;
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -886,9 +878,7 @@
                 }
             } 
             else if (data.type === 'tile') {
-                // Ensure row exists before accessing column
                 if (!gameState.board[data.row]) return;
-                
                 const cell = gameState.board[data.row][data.col];
                 if (cell && cell.owner === gameState.turn) handlePieceSelect(cell.mesh, cell);
                 else handleMoveAttempt(data.row, data.col);
@@ -955,7 +945,6 @@
             const movingPiece = gameState.board[from.r][from.c];
             const targetCell = gameState.board[to.r][to.c];
             
-            // Update Local State (Optimistic or Local Play)
             gameState.board[from.r][from.c] = null;
             gameState.board[to.r][to.c] = movingPiece;
 
@@ -966,31 +955,25 @@
                 if (gameState.turn === 'red' && to.r === 4 && to.c === 2) winner = 'red';
             }
 
-            // Animate
             animatePieceMove(movingPiece.mesh, to.r, to.c, () => {
-                // Card Exchange Logic
                 const usedSlot = gameState.selectedCardSlot;
                 const cardName = gameState.slots[usedSlot];
                 let targetSlot = (gameState.turn === 'blue') ? 'left' : 'right';
                 let pickupSlot = (gameState.turn === 'blue') ? 'right' : 'left';
-                
                 const nextTurn = (gameState.turn === 'blue') ? 'red' : 'blue';
 
-                // Update Slots
                 gameState.slots[usedSlot] = gameState.slots[pickupSlot];
                 gameState.slots[pickupSlot] = null; 
                 gameState.slots[targetSlot] = cardName;
 
-                // If Local, just continue. If Online, push state.
                 if (window.isOnline) {
-                    // Serialize State
                     let serialBoard = Array(5).fill(null).map(() => Array(5).fill(null));
                     for(let r=0;r<5;r++) for(let c=0;c<5;c++) {
                         if(gameState.board[r][c]) serialBoard[r][c] = gameState.board[r][c].owner + '-' + gameState.board[r][c].type;
                     }
                     
                     const newState = {
-                        board: serialBoard,
+                        board: serialBoard, // Will be stringified in pushMoveToFirebase
                         turn: nextTurn,
                         slots: gameState.slots,
                         gameOver: !!winner,
@@ -1000,7 +983,6 @@
                     window.pushMoveToFirebase(newState, moveDetails);
 
                 } else {
-                    // Local
                     if (winner) declareWin(winner, "Local Game");
                     else {
                         gameState.turn = nextTurn;
