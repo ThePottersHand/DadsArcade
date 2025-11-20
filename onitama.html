@@ -38,6 +38,9 @@
             .card-title { font-size: 0.6rem !important; margin-bottom: 4px !important; letter-spacing: 0px !important; }
             #turn-indicator { padding: 8px 25px !important; font-size: 1rem !important; top: 15px !important; }
             .slot-label { font-size: 0.6rem !important; border-width: 1px !important; }
+            
+            /* Chat Mobile */
+            #chat-ui { top: 70px !important; left: 10px !important; bottom: auto !important; width: 180px !important; }
         }
 
         /* Mobile Landscape */
@@ -55,6 +58,10 @@
             .slot-label { font-size: 0.5rem !important; border-width: 1px !important; }
             #win-modal { padding: 20px !important; }
             h1 { font-size: 1.5rem !important; }
+            
+            /* Chat Landscape */
+            #chat-ui { top: 10px !important; left: 10px !important; bottom: auto !important; width: 150px !important; }
+            #chat-messages { height: 80px !important; }
         }
 
         body {
@@ -127,12 +134,12 @@
             font-weight: bold;
         }
 
-        /* --- CHAT UI --- */
+        /* --- CHAT UI (MOVED TO TOP LEFT) --- */
         #chat-ui {
             position: absolute;
-            bottom: 20px;
+            top: 100px; /* Below turn indicator */
             left: 20px;
-            width: 300px;
+            width: 250px;
             max-height: 200px;
             display: flex;
             flex-direction: column;
@@ -140,27 +147,18 @@
             z-index: 50;
             transition: all 0.3s;
         }
-        /* Collapsed Chat on Mobile */
-        @media (max-width: 768px) {
-            #chat-ui {
-                width: 200px;
-                bottom: 10px;
-                left: 10px;
-            }
-            #chat-messages { display: none; }
-            #chat-ui.active #chat-messages { display: block; height: 150px; }
-        }
         
         #chat-messages {
             background: rgba(0,0,0,0.5);
             backdrop-filter: blur(5px);
             border-radius: 10px 10px 0 0;
             padding: 10px;
-            height: 150px;
+            height: 120px;
             overflow-y: auto;
             color: white;
-            font-size: 0.9rem;
-            display: none; /* Hidden by default until game starts or toggled */
+            font-size: 0.85rem;
+            display: none;
+            text-shadow: 0 1px 2px black;
         }
         #chat-input-row {
             display: flex;
@@ -169,8 +167,9 @@
             flex-grow: 1;
             border: none;
             border-radius: 0 0 0 10px;
-            padding: 10px;
+            padding: 8px;
             outline: none;
+            font-size: 0.9rem;
         }
         #chat-send {
             border: none;
@@ -362,12 +361,13 @@
         <div id="turn-indicator">Blue's Turn</div>
 
         <div id="slots-container">
-            <div id="label-red-1" class="slot-label">Red</div>
-            <div id="label-red-2" class="slot-label">Red</div>
-            <div id="label-blue-1" class="slot-label">Blue</div>
-            <div id="label-blue-2" class="slot-label">Blue</div>
-            <div id="label-red-next" class="slot-label">Red's Next</div>
-            <div id="label-blue-next" class="slot-label">Blue's Next</div>
+            <!-- Labels will be dynamically set by updateCardPositions based on player color -->
+            <div id="label-hand-1" class="slot-label"></div>
+            <div id="label-hand-2" class="slot-label"></div>
+            <div id="label-opp-1" class="slot-label"></div>
+            <div id="label-opp-2" class="slot-label"></div>
+            <div id="label-next" class="slot-label"></div>
+            <div id="label-wait" class="slot-label"></div>
         </div>
     </div>
 
@@ -390,7 +390,6 @@
 
     <!-- Firebase Imports -->
     <script type="module">
-        // YOUR FIREBASE CONFIGURATION
         const firebaseConfig = {
           apiKey: "AIzaSyCsenPY4dYI6WZyyToMusXkVfZ16FSqJIg",
           authDomain: "onitama-abf68.firebaseapp.com",
@@ -410,9 +409,8 @@
         window.myId = null;
         window.roomId = null;
         window.isOnline = false;
-        window.playerColor = 'blue'; // 'blue' or 'red'
+        window.playerColor = 'blue'; // default for local
 
-        // Init Firebase
         if (firebaseConfig.apiKey) {
             const app = initializeApp(firebaseConfig);
             window.db = getFirestore(app);
@@ -420,81 +418,60 @@
             signInAnonymously(window.auth).then(cred => {
                 window.myId = cred.user.uid;
                 console.log("Signed in as", window.myId);
-            }).catch(e => {
-                console.error("Auth Error:", e);
-                alert("Error: Could not sign in to Firebase. Check console.");
-            });
+            }).catch(e => console.error(e));
         }
 
-        // --- ONLINE LOGIC EXPORTS ---
+        // --- ONLINE LOGIC ---
         window.createOnlineRoom = async function() {
-            if (!window.db) { alert("Firebase not configured! Please edit the index.html file."); return; }
-            
+            if (!window.db) return alert("Firebase error");
             const btn = document.getElementById('btn-create');
-            btn.innerText = "Creating...";
-            btn.disabled = true;
+            btn.innerText = "Creating..."; btn.disabled = true;
             
             try {
-                // Wait for local logic to load if needed
-                if (typeof window.generateInitialState !== 'function') {
-                    throw new Error("Game logic not ready. Please wait.");
-                }
-
+                if (typeof window.generateInitialState !== 'function') throw new Error("Loading...");
                 const code = Math.random().toString(36).substring(2, 6).toUpperCase();
                 window.roomId = code;
-                window.playerColor = 'blue'; // Creator is Blue
+                window.playerColor = 'blue'; 
                 window.isOnline = true;
 
                 const startState = window.generateInitialState();
-                // Serialize the board to avoid Firestore nested array issues
                 const serialBoard = JSON.stringify(startState.board);
                 
-                const firebaseState = {
+                await setDoc(doc(window.db, "rooms", code), {
                     board: serialBoard,
                     turn: startState.turn,
                     slots: startState.slots,
                     players: { blue: window.myId, red: null },
                     status: 'waiting',
                     chat: []
-                };
-
-                await setDoc(doc(window.db, "rooms", code), firebaseState);
+                });
 
                 document.getElementById('lobby-controls').classList.add('hidden');
                 document.getElementById('waiting-room').classList.remove('hidden');
                 document.getElementById('display-room-code').innerText = code;
-
                 subscribeToRoom(code);
             } catch (error) {
-                console.error("Create Room Error:", error);
-                alert("Error creating room: " + error.message);
-                btn.innerText = "Create Room";
-                btn.disabled = false;
+                alert("Error: " + error.message);
+                btn.innerText = "Create Room"; btn.disabled = false;
             }
         }
 
         window.joinOnlineRoom = async function() {
-            if (!window.db) { alert("Firebase not configured!"); return; }
+            if (!window.db) return alert("Firebase error");
             const code = document.getElementById('room-code-input').value.toUpperCase();
-            if (code.length !== 4) { alert("Invalid Code"); return; }
+            if (code.length !== 4) return alert("Invalid Code");
             
             const btn = document.getElementById('btn-join');
-            btn.innerText = "Joining...";
-            btn.disabled = true;
+            btn.innerText = "Joining..."; btn.disabled = true;
 
             try {
                 const roomRef = doc(window.db, "rooms", code);
                 const snap = await getDoc(roomRef);
 
                 if (!snap.exists()) { alert("Room not found"); btn.innerText = "Join Room"; btn.disabled = false; return; }
-                const data = snap.data();
-                if (data.players.red) { alert("Room full"); btn.innerText = "Join Room"; btn.disabled = false; return; }
+                if (snap.data().players.red) { alert("Room full"); btn.innerText = "Join Room"; btn.disabled = false; return; }
 
-                // Join as Red
-                await updateDoc(roomRef, {
-                    "players.red": window.myId,
-                    "status": "playing"
-                });
+                await updateDoc(roomRef, { "players.red": window.myId, "status": "playing" });
 
                 window.roomId = code;
                 window.playerColor = 'red';
@@ -503,13 +480,10 @@
                 document.getElementById('lobby-screen').classList.add('hidden');
                 document.getElementById('ui-layer').classList.remove('hidden');
                 document.getElementById('chat-messages').style.display = 'block';
-
                 subscribeToRoom(code);
             } catch (error) {
-                console.error("Join Room Error:", error);
-                alert("Error joining room: " + error.message);
-                btn.innerText = "Join Room";
-                btn.disabled = false;
+                alert("Error: " + error.message);
+                btn.innerText = "Join Room"; btn.disabled = false;
             }
         }
 
@@ -518,49 +492,34 @@
                 if (!doc.exists()) return;
                 const data = doc.data();
                 
-                // Handle Status Changes
                 if (data.status === 'playing' && document.getElementById('lobby-screen').style.display !== 'none') {
-                    // Game started!
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('ui-layer').classList.remove('hidden');
                     document.getElementById('chat-messages').style.display = 'block';
-                    
-                    // Initial Board Load
                     if (data.board) loadGameState(data);
                 }
 
-                // Handle Moves
                 if (data.status === 'playing') {
                     if (data.board) syncGameState(data);
                 }
                 
-                // Handle Win
-                if (data.status && data.status.startsWith('winner-')) {
+                if (data.status && data.status.startsWith('winner')) {
                     declareWin(data.status.split('-')[1], "Online Match");
                 }
-
-                // Handle Chat
                 if (data.chat) renderChat(data.chat);
             });
         }
 
         window.pushMoveToFirebase = async function(newState, moveDetails) {
             if (!window.roomId) return;
-            
-            // Serialize board for save
             const serialBoard = JSON.stringify(newState.board);
-            
             const updateData = {
                 board: serialBoard,
                 turn: newState.turn,
                 slots: newState.slots,
                 lastMove: moveDetails
             };
-
-            if (newState.gameOver) {
-                updateData.status = `winner-${newState.winner}`;
-            }
-
+            if (newState.gameOver) updateData.status = `winner-${newState.winner}`;
             await updateDoc(doc(window.db, "rooms", window.roomId), updateData);
         }
 
@@ -569,13 +528,8 @@
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if (!text) return;
-
             await updateDoc(doc(window.db, "rooms", window.roomId), {
-                chat: arrayUnion({
-                    sender: window.playerColor,
-                    text: text,
-                    time: Date.now()
-                })
+                chat: arrayUnion({ sender: window.playerColor, text: text, time: Date.now() })
             });
             input.value = '';
         }
@@ -627,7 +581,7 @@
         };
 
         let gameState = {
-            board: Array(5).fill(null).map(() => Array(5).fill(null)), // Initialize
+            board: Array(5).fill(null).map(() => Array(5).fill(null)),
             turn: 'blue',
             slots: {},
             selectedCardSlot: null,
@@ -689,9 +643,19 @@
 
         function updateCameraPosition() {
             const aspect = window.innerWidth / window.innerHeight;
-            if (aspect < 0.8) { camera.position.set(0, 75, 55); camera.lookAt(0, -2, 0); } 
-            else if (aspect > 1 && window.innerHeight < 600) { camera.position.set(0, 45, 35); camera.lookAt(0, -3, 0); }
-            else { camera.position.set(0, 55, 45); camera.lookAt(0, -2, 0); }
+            let camZ = 55; // Default
+            // Adjust camera perspective based on player color
+            const zMult = (window.playerColor === 'red') ? -1 : 1;
+            
+            if (aspect < 0.8) { 
+                camera.position.set(0, 75, 55 * zMult); 
+            } else if (aspect > 1 && window.innerHeight < 600) { 
+                camera.position.set(0, 45, 35 * zMult); 
+            } else { 
+                camera.position.set(0, 55, 45 * zMult); 
+            }
+            
+            camera.lookAt(0, -2, 0);
         }
 
         function createRoundedBox(w, h, d, r, color) {
@@ -794,7 +758,6 @@
         window.loadGameState = function(data) {
             while(piecesGroup.children.length > 0) piecesGroup.remove(piecesGroup.children[0]);
             
-            // Deserialize if string (Online), else use direct (Local)
             let boardData = data.board;
             if (typeof boardData === 'string') {
                 try { boardData = JSON.parse(boardData); } catch(e) { console.error("Parse Error", e); return; }
@@ -819,12 +782,12 @@
             gameState.slots = data.slots;
             renderCards();
             updateTurnIndicator();
+            updateCameraPosition(); // Refresh camera on load to match player color
         }
 
         window.syncGameState = function(data) {
-            // Just snap for now
+            // Snap for now
             loadGameState(data);
-            
             if (data.status && data.status.startsWith('winner')) {
                 declareWin(data.status.split('-')[1], "Online Match");
             }
@@ -910,6 +873,7 @@
             if (gameState.gameOver) return;
             if (window.isOnline && gameState.turn !== window.playerColor) return;
             
+            // Only allow selecting cards for the current turn player
             if (gameState.turn === 'blue' && !slotName.startsWith('blue')) return;
             if (gameState.turn === 'red' && !slotName.startsWith('red')) return;
 
@@ -973,7 +937,7 @@
                     }
                     
                     const newState = {
-                        board: serialBoard, // Will be stringified in pushMoveToFirebase
+                        board: serialBoard, 
                         turn: nextTurn,
                         slots: gameState.slots,
                         gameOver: !!winner,
@@ -981,7 +945,7 @@
                     };
                     const moveDetails = { from, to };
                     window.pushMoveToFirebase(newState, moveDetails);
-
+                    // Do not update local state turn immediately online, wait for sync
                 } else {
                     if (winner) declareWin(winner, "Local Game");
                     else {
@@ -1055,35 +1019,67 @@
             let sideOffset = '10%';
             if (isMobile && isLandscape) { handOffset = '6%'; sideOffset = '6%'; }
 
-            const labelRed1 = document.getElementById('label-red-1');
-            const labelRed2 = document.getElementById('label-red-2');
-            const labelBlue1 = document.getElementById('label-blue-1');
-            const labelBlue2 = document.getElementById('label-blue-2');
-            const labelRedNext = document.getElementById('label-red-next');
-            const labelBlueNext = document.getElementById('label-blue-next');
+            const isRed = window.playerColor === 'red';
 
-            if(labelRed1) { labelRed1.style.top = handOffset; labelRed1.style.left = '25%'; }
-            if(labelRed2) { labelRed2.style.top = handOffset; labelRed2.style.left = '75%'; }
-            if(labelBlue1) { labelBlue1.style.top = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'); labelBlue1.style.left = '25%'; }
-            if(labelBlue2) { labelBlue2.style.top = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'); labelBlue2.style.left = '75%'; }
+            // Label Logic
+            // Blue View: Blue at Bottom. Red at Top.
+            // Red View: Red at Bottom. Blue at Top.
+            const labelHand1 = document.getElementById('label-hand-1');
+            const labelHand2 = document.getElementById('label-hand-2');
+            const labelOpp1 = document.getElementById('label-opp-1');
+            const labelOpp2 = document.getElementById('label-opp-2');
+            const labelNext = document.getElementById('label-next');
+            const labelWait = document.getElementById('label-wait');
+
+            // Set Text
+            if(labelHand1) labelHand1.innerText = isRed ? "Red" : "Blue";
+            if(labelHand2) labelHand2.innerText = isRed ? "Red" : "Blue";
+            if(labelOpp1) labelOpp1.innerText = isRed ? "Blue" : "Red";
+            if(labelOpp2) labelOpp2.innerText = isRed ? "Blue" : "Red";
+            if(labelNext) labelNext.innerText = isRed ? "Red's Next" : "Blue's Next";
+            if(labelWait) labelWait.innerText = isRed ? "Blue's Next" : "Red's Next";
+
+            // Hand positions (Bottom)
+            const bottomY = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%');
+            if(labelHand1) { labelHand1.style.top = bottomY; labelHand1.style.left = '25%'; }
+            if(labelHand2) { labelHand2.style.top = bottomY; labelHand2.style.left = '75%'; }
+
+            // Opponent positions (Top)
+            if(labelOpp1) { labelOpp1.style.top = handOffset; labelOpp1.style.left = '25%'; }
+            if(labelOpp2) { labelOpp2.style.top = handOffset; labelOpp2.style.left = '75%'; }
             
-            if(labelRedNext) { 
-                labelRedNext.style.top = '50%'; labelRedNext.style.left = sideOffset; 
-                labelRedNext.style.transform = 'translate(-50%, -50%) rotate(180deg)';
+            // Next/Wait logic - Always Keep "My Next" on Right
+            if(labelNext) { 
+                labelNext.style.top = '50%'; labelNext.style.left = `calc(100% - ${sideOffset})`; 
+                labelNext.style.transform = 'translate(-50%, -50%)';
             }
-            if(labelBlueNext) { 
-                labelBlueNext.style.top = '50%'; labelBlueNext.style.left = `calc(100% - ${sideOffset})`; 
-                labelBlueNext.style.transform = 'translate(-50%, -50%)';
+            if(labelWait) { 
+                labelWait.style.top = '50%'; labelWait.style.left = sideOffset; 
+                labelWait.style.transform = 'translate(-50%, -50%) rotate(180deg)';
             }
 
-            const positions = {
-                'red_1': { top: handOffset, left: '25%', rot: 180 },
-                'red_2': { top: handOffset, left: '75%', rot: 180 },
-                'blue_1': { top: isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'), left: '25%', rot: 0 },
-                'blue_2': { top: isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'), left: '75%', rot: 0 },
-                'left': { top: '50%', left: sideOffset, rot: 180 },  
-                'right': { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }    
-            };
+            // Card Positions Mapping
+            const positions = {};
+            
+            // If I am Blue (Default):
+            // blue_1/2 -> Bottom. red_1/2 -> Top. right -> BottomRight. left -> TopLeft.
+            if (!isRed) {
+                positions['blue_1'] = { top: bottomY, left: '25%', rot: 0 };
+                positions['blue_2'] = { top: bottomY, left: '75%', rot: 0 };
+                positions['red_1'] = { top: handOffset, left: '25%', rot: 180 };
+                positions['red_2'] = { top: handOffset, left: '75%', rot: 180 };
+                positions['right'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; // My next
+                positions['left'] = { top: '50%', left: sideOffset, rot: 180 }; // Opp next
+            } else {
+                // If I am Red:
+                // red_1/2 -> Bottom. blue_1/2 -> Top. left -> BottomRight. right -> TopLeft.
+                positions['red_1'] = { top: bottomY, left: '25%', rot: 0 };
+                positions['red_2'] = { top: bottomY, left: '75%', rot: 0 };
+                positions['blue_1'] = { top: handOffset, left: '25%', rot: 180 };
+                positions['blue_2'] = { top: handOffset, left: '75%', rot: 180 };
+                positions['left'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; // My next (Red's pickup is Left logic slot)
+                positions['right'] = { top: '50%', left: sideOffset, rot: 180 }; // Opp next
+            }
 
             for (let [slot, pos] of Object.entries(positions)) {
                 const cardKey = gameState.slots[slot];
@@ -1114,10 +1110,17 @@
                 if(el.dataset.baseTransform) el.style.transform = el.dataset.baseTransform;
                 let slot = null;
                 for(let s in gameState.slots) if(gameState.slots[s] === cardKey) slot = s;
+                
                 if (slot === gameState.selectedCardSlot) {
                     el.classList.add('selected');
+                    // Lift towards center (Up if bottom, Down if top)
                     let targetY = '-65%'; 
-                    if (slot.startsWith('red') || slot === 'left') targetY = '-35%'; 
+                    // Check if card is at top visually
+                    if (el.style.top === '15%' || el.style.top === '10%' || el.style.top === '6%') targetY = '-35%';
+                    
+                    // Or check rotation. 180deg means top usually.
+                    if (el.dataset.baseTransform.includes('180deg')) targetY = '-35%';
+
                     el.style.transform = el.dataset.baseTransform.replace('translate(-50%, -50%)', `translate(-50%, ${targetY})`);
                 }
             }
