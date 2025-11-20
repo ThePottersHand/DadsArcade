@@ -570,11 +570,17 @@
             const serialBoard = JSON.stringify(newState.board);
             const cleanSlots = JSON.parse(JSON.stringify(newState.slots));
             
+            // sanitize move details (REMOVE MESH OBJECTS)
+            const cleanMove = {
+                from: { r: moveDetails.from.r, c: moveDetails.from.c },
+                to: { r: moveDetails.to.r, c: moveDetails.to.c }
+            };
+
             const updateData = {
                 board: serialBoard,
                 turn: newState.turn,
                 slots: cleanSlots,
-                lastMove: moveDetails
+                lastMove: cleanMove
             };
             if (newState.gameOver) updateData.status = `winner-${newState.winner}`;
             
@@ -790,6 +796,7 @@
            GAME LOGIC
            -------------------------------------------------------------------------------- */
         
+        // Chat Toggle
         window.toggleChat = function() {
             const main = document.getElementById('chat-main');
             main.classList.toggle('collapsed');
@@ -949,6 +956,7 @@
             if (gameState.gameOver) return;
             if (window.isOnline && gameState.turn !== window.playerColor) return;
             
+            // Only allow selecting cards for the current turn player
             if (gameState.turn === 'blue' && !slotName.startsWith('blue')) return;
             if (gameState.turn === 'red' && !slotName.startsWith('red')) return;
 
