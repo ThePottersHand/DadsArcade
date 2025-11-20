@@ -38,9 +38,6 @@
             .card-title { font-size: 0.6rem !important; margin-bottom: 4px !important; letter-spacing: 0px !important; }
             #turn-indicator { padding: 8px 25px !important; font-size: 1rem !important; top: 15px !important; }
             .slot-label { font-size: 0.6rem !important; border-width: 1px !important; }
-            
-            /* Chat Mobile */
-            #chat-ui { top: 70px !important; left: 10px !important; bottom: auto !important; width: 180px !important; }
         }
 
         /* Mobile Landscape */
@@ -58,10 +55,6 @@
             .slot-label { font-size: 0.5rem !important; border-width: 1px !important; }
             #win-modal { padding: 20px !important; }
             h1 { font-size: 1.5rem !important; }
-            
-            /* Chat Landscape */
-            #chat-ui { top: 10px !important; left: 10px !important; bottom: auto !important; width: 150px !important; }
-            #chat-messages { height: 80px !important; }
         }
 
         body {
@@ -134,51 +127,96 @@
             font-weight: bold;
         }
 
-        /* --- CHAT UI (MOVED TO TOP LEFT) --- */
-        #chat-ui {
+        /* --- CHAT UI (Collapsible) --- */
+        #chat-wrapper {
             position: absolute;
-            top: 100px; /* Below turn indicator */
+            top: 100px;
             left: 20px;
-            width: 250px;
-            max-height: 200px;
+            z-index: 150;
+            pointer-events: auto;
             display: flex;
             flex-direction: column;
-            pointer-events: auto;
-            z-index: 50;
-            transition: all 0.3s;
+            align-items: flex-start;
+        }
+
+        #chat-toggle-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--blue-p);
+            color: white;
+            border: 2px solid white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            transition: transform 0.2s;
+        }
+        #chat-toggle-btn:hover { transform: scale(1.1); }
+
+        #chat-main {
+            width: 280px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: opacity 0.3s, transform 0.3s;
+            transform-origin: top left;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.2);
         }
         
+        #chat-main.collapsed {
+            opacity: 0;
+            transform: scale(0);
+            pointer-events: none;
+            height: 0;
+        }
+
         #chat-messages {
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
-            border-radius: 10px 10px 0 0;
             padding: 10px;
-            height: 120px;
+            height: 150px;
             overflow-y: auto;
             color: white;
             font-size: 0.85rem;
-            display: none;
             text-shadow: 0 1px 2px black;
         }
+        
         #chat-input-row {
             display: flex;
+            border-top: 1px solid rgba(255,255,255,0.1);
         }
         #chat-input {
             flex-grow: 1;
             border: none;
-            border-radius: 0 0 0 10px;
-            padding: 8px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 0;
+            padding: 10px;
             outline: none;
             font-size: 0.9rem;
+            width: auto;
+            text-align: left;
+            color: #333;
         }
         #chat-send {
             border: none;
             background: var(--blue-p);
             color: white;
             padding: 0 15px;
-            border-radius: 0 0 10px 0;
+            border-radius: 0;
             cursor: pointer;
             font-weight: bold;
+            margin: 0;
+        }
+
+        @media (max-width: 768px) {
+            #chat-wrapper { top: 80px; left: 10px; }
+            #chat-main { width: 200px; }
+            #chat-messages { height: 120px; }
         }
 
         /* --- GAME UI --- */
@@ -372,11 +410,14 @@
     </div>
 
     <!-- CHAT UI -->
-    <div id="chat-ui">
-        <div id="chat-messages"></div>
-        <div id="chat-input-row">
-            <input type="text" id="chat-input" placeholder="Chat..." onkeydown="if(event.key==='Enter') sendChat()">
-            <button id="chat-send" onclick="sendChat()">></button>
+    <div id="chat-wrapper" class="hidden">
+        <div id="chat-toggle-btn" onclick="toggleChat()">💬</div>
+        <div id="chat-main" class="collapsed">
+            <div id="chat-messages"></div>
+            <div id="chat-input-row">
+                <input type="text" id="chat-input" placeholder="Chat..." onkeydown="if(event.key==='Enter') sendChat()">
+                <button id="chat-send" onclick="sendChat()">></button>
+            </div>
         </div>
     </div>
 
@@ -479,7 +520,7 @@
                 
                 document.getElementById('lobby-screen').classList.add('hidden');
                 document.getElementById('ui-layer').classList.remove('hidden');
-                document.getElementById('chat-messages').style.display = 'block';
+                document.getElementById('chat-wrapper').classList.remove('hidden');
                 subscribeToRoom(code);
             } catch (error) {
                 alert("Error: " + error.message);
@@ -495,7 +536,7 @@
                 if (data.status === 'playing' && document.getElementById('lobby-screen').style.display !== 'none') {
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('ui-layer').classList.remove('hidden');
-                    document.getElementById('chat-messages').style.display = 'block';
+                    document.getElementById('chat-wrapper').classList.remove('hidden');
                     if (data.board) loadGameState(data);
                 }
 
@@ -644,7 +685,6 @@
         function updateCameraPosition() {
             const aspect = window.innerWidth / window.innerHeight;
             let camZ = 55; // Default
-            // Adjust camera perspective based on player color
             const zMult = (window.playerColor === 'red') ? -1 : 1;
             
             if (aspect < 0.8) { 
@@ -654,7 +694,6 @@
             } else { 
                 camera.position.set(0, 55, 45 * zMult); 
             }
-            
             camera.lookAt(0, -2, 0);
         }
 
@@ -727,6 +766,18 @@
            GAME LOGIC
            -------------------------------------------------------------------------------- */
         
+        // Chat Toggle
+        window.toggleChat = function() {
+            const main = document.getElementById('chat-main');
+            main.classList.toggle('collapsed');
+            // Also open chat if it was hidden by default
+            if(!main.classList.contains('collapsed')) {
+                // Auto scroll to bottom
+                const msgs = document.getElementById('chat-messages');
+                msgs.scrollTop = msgs.scrollHeight;
+            }
+        }
+
         window.startGameLocal = function() {
             document.getElementById('lobby-screen').classList.add('hidden');
             document.getElementById('ui-layer').classList.remove('hidden');
@@ -782,7 +833,7 @@
             gameState.slots = data.slots;
             renderCards();
             updateTurnIndicator();
-            updateCameraPosition(); // Refresh camera on load to match player color
+            updateCameraPosition(); // Ensure correct perspective
         }
 
         window.syncGameState = function(data) {
@@ -812,7 +863,7 @@
 
         function onTouchStart(event) {
             const target = event.target;
-            if (target.closest('.card') || target.closest('button') || target.closest('input')) return;
+            if (target.closest('.card') || target.closest('button') || target.closest('input') || target.id === 'chat-toggle-btn') return;
             event.preventDefault();
             const touch = event.changedTouches[0];
             onMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
@@ -931,6 +982,10 @@
                 gameState.slots[targetSlot] = cardName;
 
                 if (window.isOnline) {
+                    // LOCK TURN IMMEDIATELY TO PREVENT DOUBLE MOVES
+                    gameState.turn = 'network_processing'; 
+                    updateTurnIndicator();
+
                     let serialBoard = Array(5).fill(null).map(() => Array(5).fill(null));
                     for(let r=0;r<5;r++) for(let c=0;c<5;c++) {
                         if(gameState.board[r][c]) serialBoard[r][c] = gameState.board[r][c].owner + '-' + gameState.board[r][c].type;
@@ -938,14 +993,13 @@
                     
                     const newState = {
                         board: serialBoard, 
-                        turn: nextTurn,
+                        turn: nextTurn, // Send the NEXT turn to server
                         slots: gameState.slots,
                         gameOver: !!winner,
                         winner: winner
                     };
                     const moveDetails = { from, to };
                     window.pushMoveToFirebase(newState, moveDetails);
-                    // Do not update local state turn immediately online, wait for sync
                 } else {
                     if (winner) declareWin(winner, "Local Game");
                     else {
@@ -1148,8 +1202,13 @@
 
         function updateTurnIndicator() {
             const el = document.getElementById('turn-indicator');
-            el.innerText = gameState.turn === 'blue' ? "Blue's Turn" : "Red's Turn";
-            el.style.color = gameState.turn === 'blue' ? '#3498db' : '#e74c3c';
+            if (gameState.turn === 'network_processing') {
+                 el.innerText = "Sending Move...";
+                 el.style.color = '#999';
+            } else {
+                el.innerText = gameState.turn === 'blue' ? "Blue's Turn" : "Red's Turn";
+                el.style.color = gameState.turn === 'blue' ? '#3498db' : '#e74c3c';
+            }
         }
 
         function declareWin(winner, method) {
