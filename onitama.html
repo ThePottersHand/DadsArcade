@@ -218,9 +218,9 @@
             margin: 0;
         }
 
-        /* On Mobile, adjust chat position to avoid hand cards */
+        /* On Mobile, move chat higher to avoid hand cards */
         @media (max-width: 768px) {
-            #chat-wrapper { bottom: 35%; left: 10px; } /* Move above hand area */
+            #chat-wrapper { bottom: 35%; left: 10px; } 
             #chat-main { width: 220px; }
             #chat-messages { height: 120px; }
         }
@@ -484,10 +484,13 @@
                 const startState = window.generateInitialState();
                 const serialBoard = JSON.stringify(startState.board);
                 
+                // Ensure slots are pure objects (no prototype issues)
+                const cleanSlots = JSON.parse(JSON.stringify(startState.slots));
+
                 await setDoc(doc(window.db, "rooms", code), {
                     board: serialBoard,
                     turn: startState.turn,
-                    slots: startState.slots,
+                    slots: cleanSlots,
                     players: { blue: window.myId, red: null },
                     status: 'waiting',
                     chat: []
@@ -547,7 +550,10 @@
                 }
 
                 if (data.status === 'playing') {
-                    if (data.board) syncGameState(data);
+                    // Only sync if turn changed or board updated
+                    if (data.board && data.turn !== gameState.turn) {
+                         syncGameState(data);
+                    }
                 }
                 
                 if (data.status && data.status.startsWith('winner')) {
@@ -559,15 +565,27 @@
 
         window.pushMoveToFirebase = async function(newState, moveDetails) {
             if (!window.roomId) return;
+            
+            // Serialize everything to be safe
             const serialBoard = JSON.stringify(newState.board);
+            const cleanSlots = JSON.parse(JSON.stringify(newState.slots));
+            
             const updateData = {
                 board: serialBoard,
                 turn: newState.turn,
-                slots: newState.slots,
+                slots: cleanSlots,
                 lastMove: moveDetails
             };
             if (newState.gameOver) updateData.status = `winner-${newState.winner}`;
-            await updateDoc(doc(window.db, "rooms", window.roomId), updateData);
+            
+            try {
+                await updateDoc(doc(window.db, "rooms", window.roomId), updateData);
+            } catch (e) {
+                alert("Sync Error: " + e.message);
+                // Revert local turn if sync failed so they can try again
+                gameState.turn = window.playerColor; 
+                updateTurnIndicator();
+            }
         }
 
         window.sendChat = async function() {
@@ -690,7 +708,7 @@
 
         function updateCameraPosition() {
             const aspect = window.innerWidth / window.innerHeight;
-            let camZ = 55; // Default
+            let camZ = 55; 
             const zMult = (window.playerColor === 'red') ? -1 : 1;
             
             if (aspect < 0.8) { 
@@ -772,13 +790,10 @@
            GAME LOGIC
            -------------------------------------------------------------------------------- */
         
-        // Chat Toggle
         window.toggleChat = function() {
             const main = document.getElementById('chat-main');
             main.classList.toggle('collapsed');
-            // Also open chat if it was hidden by default
             if(!main.classList.contains('collapsed')) {
-                // Auto scroll to bottom
                 const msgs = document.getElementById('chat-messages');
                 msgs.scrollTop = msgs.scrollHeight;
             }
@@ -787,7 +802,7 @@
         window.startGameLocal = function() {
             document.getElementById('lobby-screen').classList.add('hidden');
             document.getElementById('ui-layer').classList.remove('hidden');
-            initGame(true); // True = Local
+            initGame(true); 
         }
 
         window.generateInitialState = function() {
@@ -839,11 +854,11 @@
             gameState.slots = data.slots;
             renderCards();
             updateTurnIndicator();
-            updateCameraPosition(); // Ensure correct perspective
+            updateCameraPosition(); 
         }
 
         window.syncGameState = function(data) {
-            // Snap for now
+            // Just reload entire state to ensure sync
             loadGameState(data);
             if (data.status && data.status.startsWith('winner')) {
                 declareWin(data.status.split('-')[1], "Online Match");
@@ -878,7 +893,11 @@
         function onMouseDown(event) {
             if (!document.getElementById('lobby-screen').classList.contains('hidden')) return;
             if (gameState.gameOver) return;
-            if (window.isOnline && gameState.turn !== window.playerColor) return;
+            
+            // STRICT TURN CHECK
+            if (window.isOnline) {
+                if (gameState.turn !== window.playerColor) return;
+            }
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -930,7 +949,6 @@
             if (gameState.gameOver) return;
             if (window.isOnline && gameState.turn !== window.playerColor) return;
             
-            // Only allow selecting cards for the current turn player
             if (gameState.turn === 'blue' && !slotName.startsWith('blue')) return;
             if (gameState.turn === 'red' && !slotName.startsWith('red')) return;
 
@@ -963,9 +981,6 @@
         }
 
         function executeMove(from, to) {
-            gameState.isAnimating = true;
-            
-            // Immediate Local Update for snappy feel
             const movingPiece = gameState.board[from.r][from.c];
             const targetCell = gameState.board[to.r][to.c];
             
@@ -978,55 +993,49 @@
                 if (gameState.turn === 'blue' && to.r === 0 && to.c === 2) winner = 'blue';
                 if (gameState.turn === 'red' && to.r === 4 && to.c === 2) winner = 'red';
             }
-            
-            const usedSlot = gameState.selectedCardSlot;
-            const cardName = gameState.slots[usedSlot];
-            let targetSlot = (gameState.turn === 'blue') ? 'left' : 'right';
-            let pickupSlot = (gameState.turn === 'blue') ? 'right' : 'left';
-            const nextTurn = (gameState.turn === 'blue') ? 'red' : 'blue';
 
-            // Update slots locally
-            gameState.slots[usedSlot] = gameState.slots[pickupSlot];
-            gameState.slots[pickupSlot] = null; 
-            gameState.slots[targetSlot] = cardName;
+            animatePieceMove(movingPiece.mesh, to.r, to.c, () => {
+                const usedSlot = gameState.selectedCardSlot;
+                const cardName = gameState.slots[usedSlot];
+                let targetSlot = (gameState.turn === 'blue') ? 'left' : 'right';
+                let pickupSlot = (gameState.turn === 'blue') ? 'right' : 'left';
+                const nextTurn = (gameState.turn === 'blue') ? 'red' : 'blue';
 
-            if(window.isOnline) {
-                // LOCK TURN IMMEDIATELY
-                gameState.turn = 'network_processing';
-                updateTurnIndicator(); 
-                
-                // Serialize and Send
-                let serialBoard = Array(5).fill(null).map(() => Array(5).fill(null));
-                for(let r=0;r<5;r++) for(let c=0;c<5;c++) {
-                    if(gameState.board[r][c]) serialBoard[r][c] = gameState.board[r][c].owner + '-' + gameState.board[r][c].type;
+                gameState.slots[usedSlot] = gameState.slots[pickupSlot];
+                gameState.slots[pickupSlot] = null; 
+                gameState.slots[targetSlot] = cardName;
+
+                if (window.isOnline) {
+                    // LOCK TURN IMMEDIATELY
+                    gameState.turn = 'network_processing';
+                    updateTurnIndicator(); 
+
+                    let serialBoard = Array(5).fill(null).map(() => Array(5).fill(null));
+                    for(let r=0;r<5;r++) for(let c=0;c<5;c++) {
+                        if(gameState.board[r][c]) serialBoard[r][c] = gameState.board[r][c].owner + '-' + gameState.board[r][c].type;
+                    }
+                    
+                    const newState = {
+                        board: serialBoard, 
+                        turn: nextTurn,
+                        slots: gameState.slots,
+                        gameOver: !!winner,
+                        winner: winner
+                    };
+                    const moveDetails = { from, to };
+                    window.pushMoveToFirebase(newState, moveDetails); 
+                } else {
+                    if (winner) declareWin(winner, "Local Game");
+                    else {
+                        gameState.turn = nextTurn;
+                        renderCards();
+                        updateTurnIndicator();
+                    }
                 }
                 
-                const newState = {
-                    board: serialBoard, 
-                    turn: nextTurn,
-                    slots: gameState.slots,
-                    gameOver: !!winner,
-                    winner: winner
-                };
-                const moveDetails = { from, to };
-                window.pushMoveToFirebase(newState, moveDetails); 
-            } else {
-                 // Local logic
-                 if (winner) declareWin(winner, "Local Game");
-                 else {
-                     gameState.turn = nextTurn;
-                     renderCards();
-                     updateTurnIndicator();
-                 }
-            }
-            
-            // Visual Cleanup
-            gameState.selectedPiece = null;
-            gameState.selectedCardSlot = null;
-            highlightBoard();
-            
-            animatePieceMove(movingPiece.mesh, to.r, to.c, () => {
-                gameState.isAnimating = false;
+                gameState.selectedPiece = null;
+                gameState.selectedCardSlot = null;
+                highlightBoard();
             });
             
             if (targetCell) piecesGroup.remove(targetCell.mesh);
@@ -1090,7 +1099,6 @@
 
             const isRed = window.playerColor === 'red';
 
-            // Label Logic
             const labelHand1 = document.getElementById('label-hand-1');
             const labelHand2 = document.getElementById('label-hand-2');
             const labelOpp1 = document.getElementById('label-opp-1');
@@ -1098,7 +1106,6 @@
             const labelNext = document.getElementById('label-next');
             const labelWait = document.getElementById('label-wait');
 
-            // Set Text
             if(labelHand1) labelHand1.innerText = isRed ? "Red" : "Blue";
             if(labelHand2) labelHand2.innerText = isRed ? "Red" : "Blue";
             if(labelOpp1) labelOpp1.innerText = isRed ? "Blue" : "Red";
@@ -1106,16 +1113,13 @@
             if(labelNext) labelNext.innerText = isRed ? "Red's Next" : "Blue's Next";
             if(labelWait) labelWait.innerText = isRed ? "Blue's Next" : "Red's Next";
 
-            // Hand positions (Bottom)
             const bottomY = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%');
             if(labelHand1) { labelHand1.style.top = bottomY; labelHand1.style.left = '25%'; }
             if(labelHand2) { labelHand2.style.top = bottomY; labelHand2.style.left = '75%'; }
 
-            // Opponent positions (Top)
             if(labelOpp1) { labelOpp1.style.top = handOffset; labelOpp1.style.left = '25%'; }
             if(labelOpp2) { labelOpp2.style.top = handOffset; labelOpp2.style.left = '75%'; }
             
-            // Next/Wait logic - Always Keep "My Next" on Right
             if(labelNext) { 
                 labelNext.style.top = '50%'; labelNext.style.left = `calc(100% - ${sideOffset})`; 
                 labelNext.style.transform = 'translate(-50%, -50%)';
@@ -1125,27 +1129,22 @@
                 labelWait.style.transform = 'translate(-50%, -50%) rotate(180deg)';
             }
 
-            // Card Positions Mapping
             const positions = {};
             
-            // If I am Blue (Default):
-            // blue_1/2 -> Bottom. red_1/2 -> Top. right -> BottomRight. left -> TopLeft.
             if (!isRed) {
                 positions['blue_1'] = { top: bottomY, left: '25%', rot: 0 };
                 positions['blue_2'] = { top: bottomY, left: '75%', rot: 0 };
                 positions['red_1'] = { top: handOffset, left: '25%', rot: 180 };
                 positions['red_2'] = { top: handOffset, left: '75%', rot: 180 };
-                positions['right'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; // My next
-                positions['left'] = { top: '50%', left: sideOffset, rot: 180 }; // Opp next
+                positions['right'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; 
+                positions['left'] = { top: '50%', left: sideOffset, rot: 180 }; 
             } else {
-                // If I am Red:
-                // red_1/2 -> Bottom. blue_1/2 -> Top. left -> BottomRight. right -> TopLeft.
                 positions['red_1'] = { top: bottomY, left: '25%', rot: 0 };
                 positions['red_2'] = { top: bottomY, left: '75%', rot: 0 };
                 positions['blue_1'] = { top: handOffset, left: '25%', rot: 180 };
                 positions['blue_2'] = { top: handOffset, left: '75%', rot: 180 };
-                positions['left'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; // My next (Red's pickup is Left logic slot)
-                positions['right'] = { top: '50%', left: sideOffset, rot: 180 }; // Opp next
+                positions['left'] = { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }; 
+                positions['right'] = { top: '50%', left: sideOffset, rot: 180 }; 
             }
 
             for (let [slot, pos] of Object.entries(positions)) {
@@ -1180,14 +1179,9 @@
                 
                 if (slot === gameState.selectedCardSlot) {
                     el.classList.add('selected');
-                    // Lift towards center (Up if bottom, Down if top)
                     let targetY = '-65%'; 
-                    // Check if card is at top visually
                     if (el.style.top === '15%' || el.style.top === '10%' || el.style.top === '6%') targetY = '-35%';
-                    
-                    // Or check rotation. 180deg means top usually.
                     if (el.dataset.baseTransform.includes('180deg')) targetY = '-35%';
-
                     el.style.transform = el.dataset.baseTransform.replace('translate(-50%, -50%)', `translate(-50%, ${targetY})`);
                 }
             }
