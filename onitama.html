@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>Onitama: Premium Zen Edition</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lato:wght@400;700&display=swap');
@@ -104,6 +104,8 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.4);
             width: 90%;
             max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
         .input-group { margin: 20px 0; }
         input {
@@ -126,6 +128,28 @@
             margin: 20px 0;
             font-weight: bold;
         }
+
+        /* Room List */
+        #public-rooms {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .room-item {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .room-item:hover { background: #eef2f3; }
+        .room-code-tag { font-weight: bold; color: var(--blue-p); }
+        .refresh-btn { font-size: 0.8rem; padding: 5px 10px; margin-bottom: 10px; background: #7f8c8d; }
 
         /* --- CHAT UI (Collapsible Bottom Left) --- */
         #chat-wrapper {
@@ -390,13 +414,23 @@
                     <input type="text" id="room-code-input" placeholder="Enter Room Code" maxlength="4" style="text-transform: uppercase;">
                 </div>
                 <button id="btn-join" class="secondary" onclick="joinOnlineRoom()">Join Room</button>
+
+                <div id="public-rooms">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="font-weight:bold; color:#555;">Public Rooms</span>
+                        <button class="refresh-btn" onclick="refreshLobbyList()">↻</button>
+                    </div>
+                    <div id="room-list-container" style="max-height: 100px; overflow-y: auto; text-align: left;">
+                        <div style="color:#999; font-style:italic; text-align:center;">Loading...</div>
+                    </div>
+                </div>
             </div>
 
             <div id="waiting-room" class="hidden">
                 <p>Room Code:</p>
                 <div class="room-code-display" id="display-room-code">????</div>
                 <p>Waiting for opponent...</p>
-                <button class="secondary" onclick="location.reload()">Cancel</button>
+                <button class="secondary" onclick="returnToLobby()">Cancel</button>
             </div>
         </div>
     </div>
@@ -431,7 +465,7 @@
         <div id="win-modal">
             <h1 id="win-message">Blue Wins!</h1>
             <p id="win-sub">Way of the Stone</p>
-            <button onclick="location.reload()">Exit to Lobby</button>
+            <button onclick="returnToLobby()">Return to Lobby</button>
         </div>
     </div>
 
@@ -448,7 +482,7 @@
         };
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
         window.db = null;
@@ -456,7 +490,7 @@
         window.myId = null;
         window.roomId = null;
         window.isOnline = false;
-        window.playerColor = 'blue'; // default for local
+        window.playerColor = 'blue'; 
 
         if (firebaseConfig.apiKey) {
             const app = initializeApp(firebaseConfig);
@@ -465,17 +499,48 @@
             signInAnonymously(window.auth).then(cred => {
                 window.myId = cred.user.uid;
                 console.log("Signed in as", window.myId);
+                refreshLobbyList(); // Load rooms on auth
             }).catch(e => console.error(e));
         }
 
-        // --- ONLINE LOGIC ---
+        // --- LOBBY LOGIC ---
+        window.refreshLobbyList = async function() {
+            if(!window.db) return;
+            const container = document.getElementById('room-list-container');
+            container.innerHTML = '<div style="text-align:center; color:#888;">Refreshing...</div>';
+            
+            try {
+                const q = query(collection(window.db, "rooms"), where("status", "==", "waiting"));
+                const querySnapshot = await getDocs(q);
+                container.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    container.innerHTML = '<div style="text-align:center; color:#aaa;">No public rooms found</div>';
+                    return;
+                }
+
+                querySnapshot.forEach((doc) => {
+                    const div = document.createElement('div');
+                    div.className = 'room-item';
+                    div.innerHTML = `<span>Room <span class="room-code-tag">${doc.id}</span></span>`;
+                    div.onclick = () => {
+                        document.getElementById('room-code-input').value = doc.id;
+                        joinOnlineRoom();
+                    };
+                    container.appendChild(div);
+                });
+            } catch(e) {
+                console.error(e);
+                container.innerHTML = '<div style="color:red; text-align:center;">Error loading rooms</div>';
+            }
+        }
+
         window.createOnlineRoom = async function() {
             if (!window.db) return alert("Firebase error");
             const btn = document.getElementById('btn-create');
             btn.innerText = "Creating..."; btn.disabled = true;
             
             try {
-                if (typeof window.generateInitialState !== 'function') throw new Error("Loading...");
                 const code = Math.random().toString(36).substring(2, 6).toUpperCase();
                 window.roomId = code;
                 window.playerColor = 'blue'; 
@@ -483,8 +548,6 @@
 
                 const startState = window.generateInitialState();
                 const serialBoard = JSON.stringify(startState.board);
-                
-                // Ensure slots are pure objects (no prototype issues)
                 const cleanSlots = JSON.parse(JSON.stringify(startState.slots));
 
                 await setDoc(doc(window.db, "rooms", code), {
@@ -550,8 +613,9 @@
                 }
 
                 if (data.status === 'playing') {
-                    // Only sync if turn changed or board updated
-                    if (data.board && data.turn !== gameState.turn) {
+                    // Sync board if updated (ignore my own optimistic updates if possible, but sync is safer)
+                    // Check if it's a new turn or board state
+                    if (data.board && (data.turn !== gameState.turn || gameState.turn === 'network_processing')) {
                          syncGameState(data);
                     }
                 }
@@ -565,16 +629,9 @@
 
         window.pushMoveToFirebase = async function(newState, moveDetails) {
             if (!window.roomId) return;
-            
-            // Serialize everything to be safe
             const serialBoard = JSON.stringify(newState.board);
             const cleanSlots = JSON.parse(JSON.stringify(newState.slots));
-            
-            // sanitize move details (REMOVE MESH OBJECTS)
-            const cleanMove = {
-                from: { r: moveDetails.from.r, c: moveDetails.from.c },
-                to: { r: moveDetails.to.r, c: moveDetails.to.c }
-            };
+            const cleanMove = { from: {r:moveDetails.from.r, c:moveDetails.from.c}, to: {r:moveDetails.to.r, c:moveDetails.to.c} };
 
             const updateData = {
                 board: serialBoard,
@@ -586,10 +643,9 @@
             
             try {
                 await updateDoc(doc(window.db, "rooms", window.roomId), updateData);
-            } catch (e) {
-                alert("Sync Error: " + e.message);
-                // Revert local turn if sync failed so they can try again
-                gameState.turn = window.playerColor; 
+            } catch(e) {
+                alert("Sync failed: " + e.message);
+                gameState.turn = window.playerColor; // Unlock on fail
                 updateTurnIndicator();
             }
         }
@@ -618,6 +674,14 @@
             });
             container.scrollTop = container.scrollHeight;
         }
+        
+        // Enter Key Support for Room Code
+        document.getElementById('room-code-input').addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                joinOnlineRoom();
+            }
+        });
     </script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -701,8 +765,8 @@
             mouse = new THREE.Vector2();
             
             window.addEventListener('resize', onWindowResize, false);
-            window.addEventListener('mousedown', onMouseDown, false);
-            window.addEventListener('touchstart', onTouchStart, { passive: false });
+            // Unified input handler
+            window.addEventListener('pointerdown', onPointerDown, false);
 
             createEnvironment();
             createBoard();
@@ -805,6 +869,25 @@
                 msgs.scrollTop = msgs.scrollHeight;
             }
         }
+        
+        window.returnToLobby = function() {
+             // Clean reset without full reload if desired, but reload is safer
+             // Actually, let's try clean reset
+             document.getElementById('modal-overlay').classList.add('hidden');
+             document.getElementById('ui-layer').classList.add('hidden');
+             document.getElementById('chat-wrapper').classList.add('hidden');
+             document.getElementById('lobby-screen').classList.remove('hidden');
+             document.getElementById('waiting-room').classList.add('hidden');
+             document.getElementById('lobby-controls').classList.remove('hidden');
+             
+             // Clear Scene (soft)
+             while(piecesGroup.children.length > 0) piecesGroup.remove(piecesGroup.children[0]);
+             gameState.gameOver = false;
+             window.roomId = null;
+             window.isOnline = false;
+             // Refresh lobby list
+             if(window.refreshLobbyList) window.refreshLobbyList();
+        }
 
         window.startGameLocal = function() {
             document.getElementById('lobby-screen').classList.add('hidden');
@@ -874,6 +957,7 @@
 
         function initGame(isLocal) {
             window.isOnline = !isLocal;
+            window.playerColor = 'blue'; // reset local
             const startData = window.generateInitialState();
             loadGameState(startData);
             document.getElementById('modal-overlay').classList.add('hidden');
@@ -889,15 +973,13 @@
             updateCardColors();
         }
 
-        function onTouchStart(event) {
+        function onPointerDown(event) {
+            // Don't prevent default indiscriminately to allow scrolling, zooming if not on canvas interaction
             const target = event.target;
-            if (target.closest('.card') || target.closest('button') || target.closest('input') || target.id === 'chat-toggle-btn') return;
-            event.preventDefault();
-            const touch = event.changedTouches[0];
-            onMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
-        }
+            if (target.closest('.card') || target.closest('button') || target.closest('input') || target.id === 'chat-toggle-btn') {
+                return; // UI interaction
+            }
 
-        function onMouseDown(event) {
             if (!document.getElementById('lobby-screen').classList.contains('hidden')) return;
             if (gameState.gameOver) return;
             
@@ -906,11 +988,19 @@
                 if (gameState.turn !== window.playerColor) return;
             }
 
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            // Calculate Coords
+            let clientX = event.clientX;
+            let clientY = event.clientY;
+            
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(scene.children, true);
+            
             if (intersects.length === 0) return;
+
+            // Prevent default ONLY if we hit something 3D to act on
+            // event.preventDefault(); 
 
             let object = intersects[0].object;
             while(object.parent && !object.userData.type) object = object.parent;
@@ -1231,9 +1321,24 @@
             const modal = document.getElementById('modal-overlay');
             document.getElementById('ui-layer').classList.add('hidden');
             modal.classList.remove('hidden');
-            document.getElementById('win-message').innerText = (winner.charAt(0).toUpperCase() + winner.slice(1)) + " Wins!";
-            document.getElementById('win-message').style.color = winner === 'red' ? '#e74c3c' : '#3498db';
-            document.getElementById('win-sub').innerText = method;
+            
+            const msg = document.getElementById('win-message');
+            const sub = document.getElementById('win-sub');
+            
+            // Custom Message Logic
+            if (window.isOnline) {
+                if (winner === window.playerColor) {
+                    msg.innerText = "VICTORY";
+                    msg.style.color = "#f1c40f"; // Gold
+                } else {
+                    msg.innerText = "DEFEAT";
+                    msg.style.color = "#7f8c8d"; // Grey
+                }
+            } else {
+                msg.innerText = (winner.charAt(0).toUpperCase() + winner.slice(1)) + " Wins!";
+                msg.style.color = winner === 'red' ? '#e74c3c' : '#3498db';
+            }
+            sub.innerText = method;
         }
 
         function onWindowResize() {
