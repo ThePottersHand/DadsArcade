@@ -1126,12 +1126,31 @@
             const layers = [];
             for(let i=0; i<size; i++) layers.push(i - offset);
 
-            for(let i=0; i<size * 3; i++) {
+            // Increase moves for smaller cubes to prevent accidental solutions
+            let moveCount = size * 4;
+            if (size === 2) moveCount = 12; 
+
+            const performRandomMove = async () => {
                 const rAxis = axes[Math.floor(Math.random()*3)];
                 const rLayer = layers[Math.floor(Math.random()*size)];
                 const rDir = Math.random() > 0.5 ? 1 : -1;
-                await this.rotateLayer(rAxis, rLayer, rDir, 100, false);
+                // Slightly faster animation for scramble
+                await this.rotateLayer(rAxis, rLayer, rDir, 80, false);
+            };
+
+            for(let i=0; i<moveCount; i++) {
+                await performRandomMove();
             }
+
+            // SAFETY CHECK: Ensure we didn't randomly scramble back to a solved state
+            // If the cube is solved (6 completed faces), keep scrambling.
+            let attempts = 0;
+            while(this.solvedFaceIds.size === 6 && attempts < 10) {
+                await performRandomMove();
+                await performRandomMove(); // Move at least twice to break alignment
+                attempts++;
+            }
+
             this.isPlaying = true; // Only enable game won logic after scramble
         }
 
