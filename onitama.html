@@ -342,11 +342,11 @@
             <div id="lobby-controls">
                 <button onclick="startGameLocal()">Local Play (Hotseat)</button>
                 <div class="or-divider">- OR -</div>
-                <button onclick="createOnlineRoom()">Create Room</button>
+                <button id="btn-create" onclick="createOnlineRoom()">Create Room</button>
                 <div class="input-group">
                     <input type="text" id="room-code-input" placeholder="Enter Room Code" maxlength="4" style="text-transform: uppercase;">
                 </div>
-                <button class="secondary" onclick="joinOnlineRoom()">Join Room</button>
+                <button id="btn-join" class="secondary" onclick="joinOnlineRoom()">Join Room</button>
             </div>
 
             <div id="waiting-room" class="hidden">
@@ -420,60 +420,88 @@
             signInAnonymously(window.auth).then(cred => {
                 window.myId = cred.user.uid;
                 console.log("Signed in as", window.myId);
-            }).catch(e => console.error(e));
+            }).catch(e => {
+                console.error("Auth Error:", e);
+                alert("Error: Could not sign in to Firebase. Check console.");
+            });
         }
 
         // --- ONLINE LOGIC EXPORTS ---
         window.createOnlineRoom = async function() {
-            if (!window.db) { alert("Firebase not configured! Please edit the index.html file."); return; }
+            if (!window.db) { alert("Firebase not configured!"); return; }
+            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
+
+            const btn = document.getElementById('btn-create');
+            btn.innerText = "Creating...";
+            btn.disabled = true;
             
-            const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-            window.roomId = code;
-            window.playerColor = 'blue'; // Creator is Blue
-            window.isOnline = true;
+            try {
+                const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+                window.roomId = code;
+                window.playerColor = 'blue'; // Creator is Blue
+                window.isOnline = true;
 
-            // Generate Start State
-            const startState = generateInitialState();
-            startState.players = { blue: window.myId, red: null };
-            startState.status = 'waiting';
-            startState.chat = [];
+                // Generate Start State
+                const startState = generateInitialState();
+                startState.players = { blue: window.myId, red: null };
+                startState.status = 'waiting';
+                startState.chat = [];
 
-            await setDoc(doc(window.db, "rooms", code), startState);
+                await setDoc(doc(window.db, "rooms", code), startState);
 
-            document.getElementById('lobby-controls').classList.add('hidden');
-            document.getElementById('waiting-room').classList.remove('hidden');
-            document.getElementById('display-room-code').innerText = code;
+                document.getElementById('lobby-controls').classList.add('hidden');
+                document.getElementById('waiting-room').classList.remove('hidden');
+                document.getElementById('display-room-code').innerText = code;
 
-            subscribeToRoom(code);
+                subscribeToRoom(code);
+            } catch (error) {
+                console.error("Create Room Error:", error);
+                alert("Error creating room: " + error.message + "\n\nDid you enable Firestore in Test Mode?");
+                btn.innerText = "Create Room";
+                btn.disabled = false;
+            }
         }
 
         window.joinOnlineRoom = async function() {
             if (!window.db) { alert("Firebase not configured!"); return; }
+            if (!window.myId) { alert("Connecting to server... Please wait."); return; }
+
             const code = document.getElementById('room-code-input').value.toUpperCase();
             if (code.length !== 4) { alert("Invalid Code"); return; }
-
-            const roomRef = doc(window.db, "rooms", code);
-            const snap = await getDoc(roomRef);
-
-            if (!snap.exists()) { alert("Room not found"); return; }
-            const data = snap.data();
-            if (data.players.red) { alert("Room full"); return; }
-
-            // Join as Red
-            await updateDoc(roomRef, {
-                "players.red": window.myId,
-                "status": "playing"
-            });
-
-            window.roomId = code;
-            window.playerColor = 'red';
-            window.isOnline = true;
             
-            document.getElementById('lobby-screen').classList.add('hidden');
-            document.getElementById('ui-layer').classList.remove('hidden');
-            document.getElementById('chat-messages').style.display = 'block';
+            const btn = document.getElementById('btn-join');
+            btn.innerText = "Joining...";
+            btn.disabled = true;
 
-            subscribeToRoom(code);
+            try {
+                const roomRef = doc(window.db, "rooms", code);
+                const snap = await getDoc(roomRef);
+
+                if (!snap.exists()) { alert("Room not found"); btn.innerText = "Join Room"; btn.disabled = false; return; }
+                const data = snap.data();
+                if (data.players.red) { alert("Room full"); btn.innerText = "Join Room"; btn.disabled = false; return; }
+
+                // Join as Red
+                await updateDoc(roomRef, {
+                    "players.red": window.myId,
+                    "status": "playing"
+                });
+
+                window.roomId = code;
+                window.playerColor = 'red';
+                window.isOnline = true;
+                
+                document.getElementById('lobby-screen').classList.add('hidden');
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('chat-messages').style.display = 'block';
+
+                subscribeToRoom(code);
+            } catch (error) {
+                console.error("Join Room Error:", error);
+                alert("Error joining room: " + error.message);
+                btn.innerText = "Join Room";
+                btn.disabled = false;
+            }
         }
 
         function subscribeToRoom(code) {
