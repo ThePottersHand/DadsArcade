@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Onitama: Premium Zen Edition</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lato:wght@400;700&display=swap');
+
+        :root {
+            --bg-gradient: linear-gradient(135deg, #a8c0ff 0%, #3f2b96 100%);
+            --ui-glass: rgba(255, 255, 255, 0.85);
+            --ui-border: rgba(255, 255, 255, 0.5);
+            --text-color: #2c3e50;
+            --red-p: #e74c3c;
+            --blue-p: #3498db;
+            --valid-move: #2ecc71;
+            --gold-accent: #f1c40f;
+            
+            /* Default (Desktop) */
+            --card-width: 130px;
+            --card-height: 190px;
+            --card-padding: 12px;
+            --slot-width: 130px;
+            --slot-height: 190px;
+        }
+
+        /* Mobile Portrait */
+        @media (max-width: 768px) and (orientation: portrait) {
+            :root {
+                --card-width: 22vw;
+                --card-height: 33vw;
+                --card-padding: 6px;
+                --slot-width: 22vw;
+                --slot-height: 33vw;
+            }
+            .card-grid { gap: 1px !important; padding: 1px !important; }
+            .card-title { font-size: 0.6rem !important; margin-bottom: 4px !important; letter-spacing: 0px !important; }
+            #turn-indicator { padding: 8px 25px !important; font-size: 1rem !important; top: 15px !important; }
+            .slot-label { font-size: 0.6rem !important; border-width: 1px !important; }
+        }
+
+        /* Mobile Landscape */
+        @media (max-height: 600px) and (orientation: landscape) {
+            :root {
+                --card-height: 45vh;
+                --card-width: calc(45vh * 0.68);
+                --card-padding: 4px;
+                --slot-height: 45vh;
+                --slot-width: calc(45vh * 0.68);
+            }
+            .card-grid { gap: 1px !important; padding: 1px !important; }
+            .card-title { font-size: 0.5rem !important; margin-bottom: 2px !important; letter-spacing: 0px !important; }
+            #turn-indicator { padding: 5px 15px !important; font-size: 0.8rem !important; top: 5px !important; }
+            .slot-label { font-size: 0.5rem !important; border-width: 1px !important; }
+            #win-modal { padding: 20px !important; }
+            h1 { font-size: 1.5rem !important; }
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Lato', sans-serif;
+            background: var(--bg-gradient);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent; 
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0; left: 0; z-index: 0;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .hidden { display: none !important; }
+        .pointer-events-auto { pointer-events: auto; }
+
+        /* --- LOBBY UI --- */
+        #lobby-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .lobby-card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            width: 90%;
+            max-width: 400px;
+        }
+        .input-group { margin: 20px 0; }
+        input {
+            padding: 12px 20px;
+            border-radius: 25px;
+            border: 2px solid #ddd;
+            font-size: 1rem;
+            width: 70%;
+            text-align: center;
+            outline: none;
+            transition: border 0.3s;
+        }
+        input:focus { border-color: var(--blue-p); }
+        .or-divider { margin: 15px 0; color: #888; font-size: 0.9rem; font-weight: bold; }
+        .room-code-display {
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            color: var(--blue-p);
+            letter-spacing: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        /* --- CHAT UI --- */
+        #chat-ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            max-height: 200px;
+            display: flex;
+            flex-direction: column;
+            pointer-events: auto;
+            z-index: 50;
+            transition: all 0.3s;
+        }
+        /* Collapsed Chat on Mobile */
+        @media (max-width: 768px) {
+            #chat-ui {
+                width: 200px;
+                bottom: 10px;
+                left: 10px;
+            }
+            #chat-messages { display: none; }
+            #chat-ui.active #chat-messages { display: block; height: 150px; }
+        }
+        
+        #chat-messages {
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            border-radius: 10px 10px 0 0;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            color: white;
+            font-size: 0.9rem;
+            display: none; /* Hidden by default until game starts or toggled */
+        }
+        #chat-input-row {
+            display: flex;
+        }
+        #chat-input {
+            flex-grow: 1;
+            border: none;
+            border-radius: 0 0 0 10px;
+            padding: 10px;
+            outline: none;
+        }
+        #chat-send {
+            border: none;
+            background: var(--blue-p);
+            color: white;
+            padding: 0 15px;
+            border-radius: 0 0 10px 0;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* --- GAME UI --- */
+        .card {
+            position: absolute;
+            background: var(--ui-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 12px;
+            padding: var(--card-padding);
+            width: var(--card-width);
+            height: var(--card-height);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            border: 1px solid var(--ui-border);
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        .card.selected {
+            border: 2px solid var(--gold-accent);
+            box-shadow: 0 0 25px rgba(241, 196, 15, 0.4);
+            z-index: 50;
+        }
+        .card-title {
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--text-color);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-size: 0.85rem;
+            text-align: center;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+            gap: 3px;
+            width: 100%;
+            aspect-ratio: 1;
+            background: rgba(0,0,0,0.05);
+            border-radius: 4px;
+            padding: 2px;
+            pointer-events: none;
+        }
+        .grid-cell {
+            background: rgba(255,255,255,0.5);
+            border-radius: 2px;
+            transition: background-color 0.3s;
+        }
+        .grid-cell.center { background: #34495e; }
+        .grid-cell.move { background: #bdc3c7; } 
+        .grid-cell.move.blue { background: var(--blue-p); box-shadow: 0 0 5px var(--blue-p); }
+        .grid-cell.move.red { background: var(--red-p); box-shadow: 0 0 5px var(--red-p); }
+
+        #turn-indicator {
+            position: absolute;
+            top: 40px; left: 50%; transform: translateX(-50%);
+            padding: 12px 40px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(5px);
+            border-radius: 50px;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: color 0.3s, opacity 0.3s;
+            opacity: 0.9;
+            pointer-events: none;
+            border: 1px solid rgba(255,255,255,0.5);
+            white-space: nowrap;
+        }
+        .slot-label {
+            position: absolute;
+            font-family: 'Cinzel', serif;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: rgba(255,255,255,0.6);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border: 2px dashed rgba(255,255,255,0.3);
+            width: var(--slot-width); 
+            height: var(--slot-height);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        #modal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 20, 30, 0.6);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            pointer-events: auto;
+        }
+        #win-modal {
+            background: white;
+            padding: 50px;
+            border-radius: 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            animation: popIn 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            max-width: 80%;
+        }
+        h1 { font-family: 'Cinzel', serif; color: var(--text-color); font-size: 2.5rem; margin: 0 0 10px 0; }
+        p { color: #7f8c8d; font-size: 1.1rem; margin: 0 0 30px 0; }
+        button {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            background: var(--text-color);
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            font-family: 'Lato', sans-serif;
+            transition: all 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin: 5px;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
+        button.secondary { background: #95a5a6; }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- LOBBY UI -->
+    <div id="lobby-screen">
+        <div class="lobby-card">
+            <h1>Zen Onitama</h1>
+            <p>Enter the Dojo</p>
+            
+            <div id="lobby-controls">
+                <button onclick="startGameLocal()">Local Play (Hotseat)</button>
+                <div class="or-divider">- OR -</div>
+                <button onclick="createOnlineRoom()">Create Room</button>
+                <div class="input-group">
+                    <input type="text" id="room-code-input" placeholder="Enter Room Code" maxlength="4" style="text-transform: uppercase;">
+                </div>
+                <button class="secondary" onclick="joinOnlineRoom()">Join Room</button>
+            </div>
+
+            <div id="waiting-room" class="hidden">
+                <p>Room Code:</p>
+                <div class="room-code-display" id="display-room-code">????</div>
+                <p>Waiting for opponent...</p>
+                <button class="secondary" onclick="location.reload()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-layer" class="hidden">
+        <div id="turn-indicator">Blue's Turn</div>
+
+        <div id="slots-container">
+            <div id="label-red-1" class="slot-label">Red</div>
+            <div id="label-red-2" class="slot-label">Red</div>
+            <div id="label-blue-1" class="slot-label">Blue</div>
+            <div id="label-blue-2" class="slot-label">Blue</div>
+            <div id="label-red-next" class="slot-label">Red's Next</div>
+            <div id="label-blue-next" class="slot-label">Blue's Next</div>
+        </div>
+    </div>
+
+    <!-- CHAT UI -->
+    <div id="chat-ui">
+        <div id="chat-messages"></div>
+        <div id="chat-input-row">
+            <input type="text" id="chat-input" placeholder="Chat..." onkeydown="if(event.key==='Enter') sendChat()">
+            <button id="chat-send" onclick="sendChat()">></button>
+        </div>
+    </div>
+
+    <div id="modal-overlay" class="hidden">
+        <div id="win-modal">
+            <h1 id="win-message">Blue Wins!</h1>
+            <p id="win-sub">Way of the Stone</p>
+            <button onclick="location.reload()">Exit to Lobby</button>
+        </div>
+    </div>
+
+    <!-- Firebase Imports -->
+    <script type="module">
+        // YOUR FIREBASE CONFIGURATION
+        const firebaseConfig = {
+          apiKey: "AIzaSyCsenPY4dYI6WZyyToMusXkVfZ16FSqJIg",
+          authDomain: "onitama-abf68.firebaseapp.com",
+          projectId: "onitama-abf68",
+          storageBucket: "onitama-abf68.firebasestorage.app",
+          messagingSenderId: "143496324438",
+          appId: "1:143496324438:web:9efea93e036e659c2e62f7",
+          measurementId: "G-94M1H5G99V"
+        };
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+        window.db = null;
+        window.auth = null;
+        window.myId = null;
+        window.roomId = null;
+        window.isOnline = false;
+        window.playerColor = 'blue'; // 'blue' or 'red'
+
+        // Init Firebase if config is present
+        if (firebaseConfig.apiKey) {
+            const app = initializeApp(firebaseConfig);
+            window.db = getFirestore(app);
+            window.auth = getAuth(app);
+            signInAnonymously(window.auth).then(cred => {
+                window.myId = cred.user.uid;
+                console.log("Signed in as", window.myId);
+            }).catch(e => console.error(e));
+        }
+
+        // --- ONLINE LOGIC EXPORTS ---
+        window.createOnlineRoom = async function() {
+            if (!window.db) { alert("Firebase not configured! Please edit the index.html file."); return; }
+            
+            const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+            window.roomId = code;
+            window.playerColor = 'blue'; // Creator is Blue
+            window.isOnline = true;
+
+            // Generate Start State
+            const startState = generateInitialState();
+            startState.players = { blue: window.myId, red: null };
+            startState.status = 'waiting';
+            startState.chat = [];
+
+            await setDoc(doc(window.db, "rooms", code), startState);
+
+            document.getElementById('lobby-controls').classList.add('hidden');
+            document.getElementById('waiting-room').classList.remove('hidden');
+            document.getElementById('display-room-code').innerText = code;
+
+            subscribeToRoom(code);
+        }
+
+        window.joinOnlineRoom = async function() {
+            if (!window.db) { alert("Firebase not configured!"); return; }
+            const code = document.getElementById('room-code-input').value.toUpperCase();
+            if (code.length !== 4) { alert("Invalid Code"); return; }
+
+            const roomRef = doc(window.db, "rooms", code);
+            const snap = await getDoc(roomRef);
+
+            if (!snap.exists()) { alert("Room not found"); return; }
+            const data = snap.data();
+            if (data.players.red) { alert("Room full"); return; }
+
+            // Join as Red
+            await updateDoc(roomRef, {
+                "players.red": window.myId,
+                "status": "playing"
+            });
+
+            window.roomId = code;
+            window.playerColor = 'red';
+            window.isOnline = true;
+            
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+            document.getElementById('chat-messages').style.display = 'block';
+
+            subscribeToRoom(code);
+        }
+
+        function subscribeToRoom(code) {
+            onSnapshot(doc(window.db, "rooms", code), (doc) => {
+                const data = doc.data();
+                
+                // Handle Status Changes
+                if (data.status === 'playing' && document.getElementById('lobby-screen').style.display !== 'none') {
+                    // Game started!
+                    document.getElementById('lobby-screen').classList.add('hidden');
+                    document.getElementById('ui-layer').classList.remove('hidden');
+                    document.getElementById('chat-messages').style.display = 'block';
+                    // Initial Board Load
+                    loadGameState(data);
+                }
+
+                // Handle Moves
+                if (data.status === 'playing') {
+                    // Sync Board
+                    syncGameState(data);
+                }
+                
+                // Handle Win
+                if (data.status.startsWith('winner-')) {
+                    declareWin(data.status.split('-')[1], "Online Match");
+                }
+
+                // Handle Chat
+                renderChat(data.chat);
+            });
+        }
+
+        window.pushMoveToFirebase = async function(newState, moveDetails) {
+            if (!window.roomId) return;
+            
+            const updateData = {
+                board: newState.board, // Need to serialize this carefully
+                turn: newState.turn,
+                slots: newState.slots,
+                lastMove: moveDetails
+            };
+
+            // If win
+            if (newState.gameOver) {
+                updateData.status = `winner-${newState.winner}`;
+            }
+
+            await updateDoc(doc(window.db, "rooms", window.roomId), updateData);
+        }
+
+        window.sendChat = async function() {
+            if (!window.roomId) return;
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            await updateDoc(doc(window.db, "rooms", window.roomId), {
+                chat: arrayUnion({
+                    sender: window.playerColor,
+                    text: text,
+                    time: Date.now()
+                })
+            });
+            input.value = '';
+        }
+
+        function renderChat(chatArray) {
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = '';
+            if(!chatArray) return;
+            chatArray.forEach(msg => {
+                const div = document.createElement('div');
+                div.style.marginBottom = '5px';
+                const color = msg.sender === 'blue' ? '#3498db' : '#e74c3c';
+                div.innerHTML = `<span style="color:${color};font-weight:bold">${msg.sender.toUpperCase()}:</span> ${msg.text}`;
+                container.appendChild(div);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // --- HELPERS ---
+        function generateInitialState() {
+            // Logic to generate cards and slots identical to initGame()
+            // We will actually let the existing initGame() logic run, then extract the state.
+            // But we need to do this without drawing.
+            // For MVP: Reuse the global logic but only inside the host.
+            // See window.initGame adaptation below.
+            return {
+                // Placeholder, actual logic is in the main script
+            };
+        }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        /* --------------------------------------------------------------------------------
+           DATA & GLOBALS
+           -------------------------------------------------------------------------------- */
+        const CARDS = {
+            tiger: { name: 'Tiger', moves: [[0, 2], [0, -1]] },
+            dragon: { name: 'Dragon', moves: [[-2, 1], [2, 1], [-1, -1], [1, -1]] },
+            crab: { name: 'Crab', moves: [[0, 1], [-2, 0], [2, 0]] },
+            elephant: { name: 'Elephant', moves: [[-1, 1], [1, 1], [-1, 0], [1, 0]] },
+            monkey: { name: 'Monkey', moves: [[-1, 1], [1, 1], [-1, -1], [1, -1]] },
+            mantis: { name: 'Mantis', moves: [[-1, 1], [1, 1], [0, -1]] },
+            crane: { name: 'Crane', moves: [[0, 1], [-1, -1], [1, -1]] },
+            boar: { name: 'Boar', moves: [[0, 1], [-1, 0], [1, 0]] },
+            frog: { name: 'Frog', moves: [[-1, 1], [-2, 0], [1, -1]] },
+            goose: { name: 'Goose', moves: [[-1, 1], [-1, 0], [1, 0], [1, -1]] },
+            horse: { name: 'Horse', moves: [[0, 1], [-1, 0], [0, -1]] },
+            eel: { name: 'Eel', moves: [[-1, 1], [-1, -1], [1, 0]] },
+            rabbit: { name: 'Rabbit', moves: [[1, 1], [2, 0], [-1, -1]] },
+            rooster: { name: 'Rooster', moves: [[1, 1], [1, 0], [-1, 0], [-1, -1]] },
+            ox: { name: 'Ox', moves: [[0, 1], [1, 0], [0, -1]] },
+            cobra: { name: 'Cobra', moves: [[-1, 0], [1, 1], [1, -1]] }
+        };
+
+        const COLORS = {
+            boardLight: 0xEEEEEE, boardDark: 0x95A5A6,
+            blue: 0x2980b9, red: 0xc0392b, valid: 0x2ecc71,
+            templeRed: 0xE6B0AA, templeBlue: 0xA9CCE3
+        };
+
+        let gameState = {
+            board: Array(5).fill(null).map(() => Array(5).fill(null)), // Initialize to avoid crashes
+            turn: 'blue',
+            slots: {},
+            selectedCardSlot: null,
+            selectedPiece: null, 
+            gameOver: false,
+            isAnimating: false
+        };
+
+        let scene, camera, renderer, raycaster, mouse;
+        let boardMeshes = []; 
+        let piecesGroup, particlesGroup;
+        let cardElements = {}; 
+        let clock = new THREE.Clock();
+
+        /* --------------------------------------------------------------------------------
+           INIT
+           -------------------------------------------------------------------------------- */
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0xa8c0ff, 0.006); 
+
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.HemisphereLight(0xffffff, 0x2c3e50, 0.7);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+            dirLight.position.set(30, 50, 20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            scene.add(dirLight);
+            scene.add(new THREE.PointLight(0xa8c0ff, 0.6));
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('mousedown', onMouseDown, false);
+            window.addEventListener('touchstart', onTouchStart, { passive: false });
+
+            createEnvironment();
+            createBoard();
+            piecesGroup = new THREE.Group();
+            scene.add(piecesGroup);
+
+            animate();
+        }
+
+        function updateCameraPosition() {
+            const aspect = window.innerWidth / window.innerHeight;
+            if (aspect < 0.8) { camera.position.set(0, 75, 55); camera.lookAt(0, -2, 0); } 
+            else if (aspect > 1 && window.innerHeight < 600) { camera.position.set(0, 45, 35); camera.lookAt(0, -3, 0); }
+            else { camera.position.set(0, 55, 45); camera.lookAt(0, -2, 0); }
+        }
+
+        // --- ASSETS (Simplified for brevity) ---
+        function createRoundedBox(w, h, d, r, color) {
+            const geometry = new THREE.BoxGeometry(w, h, d);
+            const material = new THREE.MeshPhysicalMaterial({ color: color, metalness: 0.1, roughness: 0.6 });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        function createEnvironment() {
+            // Island
+            const island = new THREE.Mesh(new THREE.CylinderGeometry(32, 18, 10, 64), new THREE.MeshStandardMaterial({ color: 0x5D4037 }));
+            island.position.y = -6; island.receiveShadow = true; scene.add(island);
+            const grass = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 64), new THREE.MeshStandardMaterial({ color: 0x7DCEA0 }));
+            grass.position.y = -1.1; grass.receiveShadow = true; scene.add(grass);
+            
+            // Trees & Particles (Simplified logic from previous versions included)
+            const createTree = (x, z) => {
+                const g = new THREE.Group();
+                const t = createRoundedBox(1.2, 4, 1.2, 0, 0x5D4037); t.position.y = 2; g.add(t);
+                for(let i=0;i<8;i++) {
+                    const l = createRoundedBox(1.5+Math.random(), 1.5+Math.random(), 1.5+Math.random(), 0, [0xFFB7C5,0xFFC0CB][i%2]);
+                    l.position.set((Math.random()-0.5)*4, 4+Math.random()*3, (Math.random()-0.5)*4);
+                    g.add(l);
+                }
+                g.position.set(x, -1, z); scene.add(g);
+            }
+            createTree(-22, -10); createTree(22, 8); createTree(-16, 18); createTree(18, -18);
+        }
+
+        function createBoard() {
+            const TILE_SIZE = 5, GAP = 0.3;
+            boardMeshes = [];
+            for (let row = 0; row < 5; row++) {
+                let rowMeshes = [];
+                for (let col = 0; col < 5; col++) {
+                    let color = (row + col) % 2 === 0 ? COLORS.boardLight : COLORS.boardDark;
+                    if (row === 0 && col === 2) color = COLORS.templeRed; 
+                    if (row === 4 && col === 2) color = COLORS.templeBlue;
+                    const tile = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE, 0.8, TILE_SIZE), new THREE.MeshStandardMaterial({ color: color }));
+                    tile.position.set((col - 2) * 5.3, 0, (row - 2) * 5.3);
+                    tile.receiveShadow = true;
+                    tile.userData = { type: 'tile', row: row, col: col, originalColor: color };
+                    scene.add(tile);
+                    rowMeshes.push(tile);
+                }
+                boardMeshes.push(rowMeshes);
+            }
+        }
+
+        function createPawn(type, owner) {
+            const group = new THREE.Group();
+            const color = owner === 'red' ? COLORS.red : COLORS.blue;
+            if (type === 'master') {
+                const b = createRoundedBox(2.2, 0.8, 2.2, 0, color); b.position.y = 0.4; group.add(b);
+                const t = createRoundedBox(1.6, 1.5, 1.4, 0, color); t.position.y = 1.5; group.add(t);
+                const h = createRoundedBox(1.0, 1.0, 1.0, 0, color); h.position.y = 2.6; group.add(h);
+                const s = createRoundedBox(1.2, 0.2, 1.2, 0, 0xFFD700); s.position.y = 2.3; group.add(s);
+            } else {
+                const b = createRoundedBox(1.6, 0.6, 1.6, 0, color); b.position.y = 0.3; group.add(b);
+                const bd = createRoundedBox(1.0, 1.0, 1.0, 0, color); bd.position.y = 1.1; group.add(bd);
+                const h = createRoundedBox(0.8, 0.8, 0.8, 0, color); h.position.y = 2.0; group.add(h);
+            }
+            group.position.y = 0.4; 
+            group.userData = { type: 'pawn', pawnType: type, owner: owner };
+            return group;
+        }
+
+        /* --------------------------------------------------------------------------------
+           GAME LOGIC
+           -------------------------------------------------------------------------------- */
+        
+        window.startGameLocal = function() {
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+            initGame(true); // True = Local
+        }
+
+        window.generateInitialState = function() {
+             // Use the same logic as initGame but return data object
+            const allCards = Object.keys(CARDS);
+            for (let i = allCards.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+            }
+            
+            // Board Array Representation
+            // 5x5 array of strings: "red-student", "blue-master", or null
+            let boardState = Array(5).fill(null).map(() => Array(5).fill(null));
+            // Red (Top 0)
+            boardState[0][0] = 'red-student'; boardState[0][1] = 'red-student'; boardState[0][2] = 'red-master'; boardState[0][3] = 'red-student'; boardState[0][4] = 'red-student';
+            // Blue (Bottom 4)
+            boardState[4][0] = 'blue-student'; boardState[4][1] = 'blue-student'; boardState[4][2] = 'blue-master'; boardState[4][3] = 'blue-student'; boardState[4][4] = 'blue-student';
+
+            // Start turn logic
+            let turn = Math.random() > 0.5 ? 'red' : 'blue';
+            let slots = {
+                'red_1': allCards[0], 'red_2': allCards[1],
+                'blue_1': allCards[2], 'blue_2': allCards[3],
+            };
+            if (turn === 'blue') { slots['right'] = allCards[4]; slots['left'] = null; } 
+            else { slots['left'] = allCards[4]; slots['right'] = null; }
+
+            return { board: boardState, turn: turn, slots: slots };
+        }
+
+        window.loadGameState = function(data) {
+            // Render board from data
+            while(piecesGroup.children.length > 0) piecesGroup.remove(piecesGroup.children[0]);
+            gameState.board = Array(5).fill(null).map(() => Array(5).fill(null));
+            
+            for(let r=0; r<5; r++) {
+                for(let c=0; c<5; c++) {
+                    const val = data.board[r][c]; // "red-student"
+                    if(val) {
+                        const [owner, type] = val.split('-');
+                        const mesh = createPawn(type, owner);
+                        mesh.position.set((c-2)*5.3, 0.4, (r-2)*5.3);
+                        piecesGroup.add(mesh);
+                        gameState.board[r][c] = { type, owner, mesh };
+                    }
+                }
+            }
+            
+            gameState.turn = data.turn;
+            gameState.slots = data.slots;
+            renderCards();
+            updateTurnIndicator();
+        }
+
+        window.syncGameState = function(data) {
+            // Called when network updates. 
+            // If we have a lastMove in data, animate it, then snap to state
+            if (data.lastMove) {
+                // Simple implementation: Snap to new state for now to avoid desync
+                // A full implementation would animate the piece from A to B
+            }
+            // Snap
+            loadGameState(data);
+            
+            // If game over
+            if (data.status.startsWith('winner')) {
+                declareWin(data.status.split('-')[1], "Online Match");
+            }
+        }
+
+        function initGame(isLocal) {
+            window.isOnline = !isLocal;
+            const startData = window.generateInitialState();
+            loadGameState(startData);
+            document.getElementById('modal-overlay').classList.add('hidden');
+        }
+
+        function renderCards() {
+            Object.values(cardElements).forEach(el => el.remove());
+            cardElements = {};
+            ['red_1', 'red_2', 'blue_1', 'blue_2', 'left', 'right'].forEach(slot => {
+                if (gameState.slots[slot]) createCardDOM(gameState.slots[slot]);
+            });
+            updateCardPositions();
+            updateCardColors();
+        }
+
+        function onTouchStart(event) {
+            const target = event.target;
+            if (target.closest('.card') || target.closest('button') || target.closest('input')) return;
+            event.preventDefault();
+            const touch = event.changedTouches[0];
+            onMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
+        }
+
+        function onMouseDown(event) {
+            // Guard: If Lobby is visible, ignore clicks on board
+            if (!document.getElementById('lobby-screen').classList.contains('hidden')) return;
+            
+            if (gameState.gameOver) return;
+            
+            // Online Check
+            if (window.isOnline && gameState.turn !== window.playerColor) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            if (intersects.length === 0) return;
+
+            let object = intersects[0].object;
+            while(object.parent && !object.userData.type) object = object.parent;
+            const data = object.userData;
+
+            if (data.type === 'pawn') {
+                if (data.owner === gameState.turn) handlePieceSelect(object, data);
+                else {
+                    let pos = findPiecePos(object);
+                    if (pos) handleMoveAttempt(pos.r, pos.c);
+                }
+            } 
+            else if (data.type === 'tile') {
+                // Ensure row exists before accessing column
+                if (!gameState.board[data.row]) return;
+                
+                const cell = gameState.board[data.row][data.col];
+                if (cell && cell.owner === gameState.turn) handlePieceSelect(cell.mesh, cell);
+                else handleMoveAttempt(data.row, data.col);
+            }
+        }
+
+        function findPiecePos(mesh) {
+            for(let r=0; r<5; r++) {
+                for(let c=0; c<5; c++) {
+                    if (gameState.board[r][c] && gameState.board[r][c].mesh === mesh) return {r, c};
+                }
+            }
+            return null;
+        }
+
+        function handlePieceSelect(mesh, data) {
+            const pos = findPiecePos(mesh);
+            if(pos) {
+                if (gameState.selectedPiece && gameState.selectedPiece.r === pos.r && gameState.selectedPiece.c === pos.c) {
+                    gameState.selectedPiece = null;
+                } else {
+                    gameState.selectedPiece = { r: pos.r, c: pos.c, mesh: mesh };
+                }
+                highlightBoard();
+            }
+        }
+
+        function handleCardSelect(slotName) {
+            if (gameState.gameOver) return;
+            if (window.isOnline && gameState.turn !== window.playerColor) return;
+            
+            if (gameState.turn === 'blue' && !slotName.startsWith('blue')) return;
+            if (gameState.turn === 'red' && !slotName.startsWith('red')) return;
+
+            gameState.selectedCardSlot = (gameState.selectedCardSlot === slotName) ? null : slotName;
+            updateCardVisuals();
+            highlightBoard();
+        }
+
+        function handleMoveAttempt(r, c) {
+            if (!gameState.selectedPiece || !gameState.selectedCardSlot) return;
+            const cardName = gameState.slots[gameState.selectedCardSlot];
+            const moves = getValidMoves(gameState.selectedPiece.r, gameState.selectedPiece.c, CARDS[cardName]);
+            if (moves.some(m => m.r === r && m.c === c)) executeMove(gameState.selectedPiece, {r, c});
+        }
+
+        function getValidMoves(row, col, card) {
+            let moves = [];
+            const isBlue = gameState.turn === 'blue';
+            card.moves.forEach(move => {
+                const dx = isBlue ? move[0] : -move[0];
+                const dy = isBlue ? -move[1] : move[1];
+                const targetRow = row + dy;
+                const targetCol = col + dx;
+                if (targetRow >= 0 && targetRow < 5 && targetCol >= 0 && targetCol < 5) {
+                    const targetCell = gameState.board[targetRow][targetCol];
+                    if (!targetCell || targetCell.owner !== gameState.turn) moves.push({ r: targetRow, c: targetCol });
+                }
+            });
+            return moves;
+        }
+
+        function executeMove(from, to) {
+            const movingPiece = gameState.board[from.r][from.c];
+            const targetCell = gameState.board[to.r][to.c];
+            
+            // Update Local State (Optimistic or Local Play)
+            gameState.board[from.r][from.c] = null;
+            gameState.board[to.r][to.c] = movingPiece;
+
+            let winner = null;
+            if (targetCell && targetCell.type === 'master') winner = gameState.turn;
+            if (movingPiece.type === 'master') {
+                if (gameState.turn === 'blue' && to.r === 0 && to.c === 2) winner = 'blue';
+                if (gameState.turn === 'red' && to.r === 4 && to.c === 2) winner = 'red';
+            }
+
+            // Animate
+            animatePieceMove(movingPiece.mesh, to.r, to.c, () => {
+                // Card Exchange Logic
+                const usedSlot = gameState.selectedCardSlot;
+                const cardName = gameState.slots[usedSlot];
+                let targetSlot = (gameState.turn === 'blue') ? 'left' : 'right';
+                let pickupSlot = (gameState.turn === 'blue') ? 'right' : 'left';
+                
+                const nextTurn = (gameState.turn === 'blue') ? 'red' : 'blue';
+
+                // Update Slots
+                gameState.slots[usedSlot] = gameState.slots[pickupSlot];
+                gameState.slots[pickupSlot] = null; 
+                gameState.slots[targetSlot] = cardName;
+
+                // If Local, just continue. If Online, push state.
+                if (window.isOnline) {
+                    // Serialize State
+                    let serialBoard = Array(5).fill(null).map(() => Array(5).fill(null));
+                    for(let r=0;r<5;r++) for(let c=0;c<5;c++) {
+                        if(gameState.board[r][c]) serialBoard[r][c] = gameState.board[r][c].owner + '-' + gameState.board[r][c].type;
+                    }
+                    
+                    const newState = {
+                        board: serialBoard,
+                        turn: nextTurn,
+                        slots: gameState.slots,
+                        gameOver: !!winner,
+                        winner: winner
+                    };
+                    const moveDetails = { from, to };
+                    window.pushMoveToFirebase(newState, moveDetails);
+
+                } else {
+                    // Local
+                    if (winner) declareWin(winner, "Local Game");
+                    else {
+                        gameState.turn = nextTurn;
+                        renderCards();
+                        updateTurnIndicator();
+                    }
+                }
+                
+                gameState.selectedPiece = null;
+                gameState.selectedCardSlot = null;
+                highlightBoard();
+            });
+            
+            if (targetCell) piecesGroup.remove(targetCell.mesh);
+        }
+
+        function animatePieceMove(mesh, r, c, onComplete) {
+            const startPos = mesh.position.clone();
+            const endPos = new THREE.Vector3((c - 2) * 5.3, 0, (r - 2) * 5.3);
+            const start = Date.now();
+            const anim = () => {
+                const p = Math.min((Date.now() - start) / 500, 1);
+                const ease = 1 - Math.pow(1 - p, 3);
+                mesh.position.lerpVectors(startPos, endPos, ease);
+                mesh.position.y = Math.sin(p * Math.PI) * 5;
+                if (p < 1) requestAnimationFrame(anim);
+                else { mesh.position.y = 0; onComplete(); }
+            };
+            anim();
+        }
+
+        function createCardDOM(cardKey) {
+            const cardData = CARDS[cardKey];
+            const el = document.createElement('div');
+            el.className = 'card pointer-events-auto';
+            el.id = `card-${cardKey}`;
+            
+            const title = document.createElement('div');
+            title.className = 'card-title';
+            title.innerText = cardData.name;
+            el.appendChild(title);
+
+            const grid = document.createElement('div');
+            grid.className = 'card-grid';
+            
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    if (r === 2 && c === 2) cell.classList.add('center');
+                    const dx = c - 2, dy = 2 - r;
+                    if (cardData.moves.some(m => m[0] === dx && m[1] === dy)) cell.classList.add('move');
+                    grid.appendChild(cell);
+                }
+            }
+            el.appendChild(grid);
+            document.getElementById('ui-layer').appendChild(el);
+            cardElements[cardKey] = el;
+            el.onclick = () => {
+                let mySlot = null;
+                for(let s in gameState.slots) if(gameState.slots[s] === cardKey) mySlot = s;
+                if(mySlot) handleCardSelect(mySlot);
+            };
+        }
+
+        function updateCardPositions() {
+            const isMobile = window.innerWidth < 768;
+            const isLandscape = window.innerWidth > window.innerHeight;
+            let handOffset = isMobile ? '10%' : '15%';
+            let sideOffset = '10%';
+            if (isMobile && isLandscape) { handOffset = '6%'; sideOffset = '6%'; }
+
+            const labelRed1 = document.getElementById('label-red-1');
+            const labelRed2 = document.getElementById('label-red-2');
+            const labelBlue1 = document.getElementById('label-blue-1');
+            const labelBlue2 = document.getElementById('label-blue-2');
+            const labelRedNext = document.getElementById('label-red-next');
+            const labelBlueNext = document.getElementById('label-blue-next');
+
+            if(labelRed1) { labelRed1.style.top = handOffset; labelRed1.style.left = '25%'; }
+            if(labelRed2) { labelRed2.style.top = handOffset; labelRed2.style.left = '75%'; }
+            if(labelBlue1) { labelBlue1.style.top = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'); labelBlue1.style.left = '25%'; }
+            if(labelBlue2) { labelBlue2.style.top = isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'); labelBlue2.style.left = '75%'; }
+            
+            if(labelRedNext) { 
+                labelRedNext.style.top = '50%'; labelRedNext.style.left = sideOffset; 
+                labelRedNext.style.transform = 'translate(-50%, -50%) rotate(180deg)';
+            }
+            if(labelBlueNext) { 
+                labelBlueNext.style.top = '50%'; labelBlueNext.style.left = `calc(100% - ${sideOffset})`; 
+                labelBlueNext.style.transform = 'translate(-50%, -50%)';
+            }
+
+            const positions = {
+                'red_1': { top: handOffset, left: '25%', rot: 180 },
+                'red_2': { top: handOffset, left: '75%', rot: 180 },
+                'blue_1': { top: isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'), left: '25%', rot: 0 },
+                'blue_2': { top: isMobile && isLandscape ? '94%' : (isMobile ? '90%' : '85%'), left: '75%', rot: 0 },
+                'left': { top: '50%', left: sideOffset, rot: 180 },  
+                'right': { top: '50%', left: `calc(100% - ${sideOffset})`, rot: 0 }    
+            };
+
+            for (let [slot, pos] of Object.entries(positions)) {
+                const cardKey = gameState.slots[slot];
+                if (cardKey && cardElements[cardKey]) {
+                    const el = cardElements[cardKey];
+                    el.style.top = pos.top; el.style.left = pos.left;
+                    const t = `translate(-50%, -50%) rotate(${pos.rot}deg)`;
+                    el.style.transform = t; el.dataset.baseTransform = t;
+                }
+            }
+        }
+
+        function updateCardColors() {
+            for(let [slot, cardKey] of Object.entries(gameState.slots)) {
+                if (!cardKey || !cardElements[cardKey]) continue;
+                const el = cardElements[cardKey];
+                const moveCells = el.querySelectorAll('.grid-cell.move');
+                moveCells.forEach(c => c.classList.remove('blue', 'red'));
+                if (slot.startsWith('blue')) moveCells.forEach(c => c.classList.add('blue'));
+                else if (slot.startsWith('red')) moveCells.forEach(c => c.classList.add('red'));
+            }
+        }
+
+        function updateCardVisuals() {
+            for(let cardKey in cardElements) {
+                const el = cardElements[cardKey];
+                el.classList.remove('selected');
+                if(el.dataset.baseTransform) el.style.transform = el.dataset.baseTransform;
+                let slot = null;
+                for(let s in gameState.slots) if(gameState.slots[s] === cardKey) slot = s;
+                if (slot === gameState.selectedCardSlot) {
+                    el.classList.add('selected');
+                    let targetY = '-65%'; 
+                    if (slot.startsWith('red') || slot === 'left') targetY = '-35%'; 
+                    el.style.transform = el.dataset.baseTransform.replace('translate(-50%, -50%)', `translate(-50%, ${targetY})`);
+                }
+            }
+        }
+
+        function highlightBoard() {
+            for(let r=0; r<5; r++) for(let c=0; c<5; c++) {
+                const tile = boardMeshes[r][c];
+                tile.material.color.setHex(tile.userData.originalColor);
+                tile.material.emissive.setHex(0x000000);
+            }
+            if (gameState.selectedPiece) {
+                const t = boardMeshes[gameState.selectedPiece.r][gameState.selectedPiece.c];
+                t.material.emissive.setHex(0x222222); 
+            }
+            if (gameState.selectedPiece && gameState.selectedCardSlot) {
+                const card = CARDS[gameState.slots[gameState.selectedCardSlot]];
+                const moves = getValidMoves(gameState.selectedPiece.r, gameState.selectedPiece.c, card);
+                moves.forEach(m => {
+                    boardMeshes[m.r][m.c].material.color.setHex(COLORS.valid);
+                    boardMeshes[m.r][m.c].material.emissive.setHex(0x004400);
+                });
+            }
+        }
+
+        function updateTurnIndicator() {
+            const el = document.getElementById('turn-indicator');
+            el.innerText = gameState.turn === 'blue' ? "Blue's Turn" : "Red's Turn";
+            el.style.color = gameState.turn === 'blue' ? '#3498db' : '#e74c3c';
+        }
+
+        function declareWin(winner, method) {
+            gameState.gameOver = true;
+            const modal = document.getElementById('modal-overlay');
+            document.getElementById('ui-layer').classList.add('hidden');
+            modal.classList.remove('hidden');
+            document.getElementById('win-message').innerText = (winner.charAt(0).toUpperCase() + winner.slice(1)) + " Wins!";
+            document.getElementById('win-message').style.color = winner === 'red' ? '#e74c3c' : '#3498db';
+            document.getElementById('win-sub').innerText = method;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateCameraPosition();
+            updateCardPositions();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        initThree();
+
+    </script>
+</body>
+</html>
