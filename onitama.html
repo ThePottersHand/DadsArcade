@@ -441,8 +441,13 @@
                 window.playerColor = 'blue'; // Creator is Blue
                 window.isOnline = true;
 
-                // Generate Start State
-                const startState = generateInitialState();
+                // Ensure we use window.generateInitialState which is defined below in the main script
+                // We wait a tick if necessary, but it should be loaded
+                if (typeof window.generateInitialState !== 'function') {
+                    throw new Error("Game logic not loaded. Refresh and try again.");
+                }
+
+                const startState = window.generateInitialState();
                 startState.players = { blue: window.myId, red: null };
                 startState.status = 'waiting';
                 startState.chat = [];
@@ -456,7 +461,7 @@
                 subscribeToRoom(code);
             } catch (error) {
                 console.error("Create Room Error:", error);
-                alert("Error creating room: " + error.message + "\n\nDid you enable Firestore in Test Mode?");
+                alert("Error creating room: " + error.message);
                 btn.innerText = "Create Room";
                 btn.disabled = false;
             }
@@ -506,6 +511,7 @@
 
         function subscribeToRoom(code) {
             onSnapshot(doc(window.db, "rooms", code), (doc) => {
+                if (!doc.exists()) return;
                 const data = doc.data();
                 
                 // Handle Status Changes
@@ -515,22 +521,22 @@
                     document.getElementById('ui-layer').classList.remove('hidden');
                     document.getElementById('chat-messages').style.display = 'block';
                     // Initial Board Load
-                    loadGameState(data);
+                    if (data.board) loadGameState(data);
                 }
 
                 // Handle Moves
                 if (data.status === 'playing') {
                     // Sync Board
-                    syncGameState(data);
+                    if (data.board) syncGameState(data);
                 }
                 
                 // Handle Win
-                if (data.status.startsWith('winner-')) {
+                if (data.status && data.status.startsWith('winner-')) {
                     declareWin(data.status.split('-')[1], "Online Match");
                 }
 
                 // Handle Chat
-                renderChat(data.chat);
+                if (data.chat) renderChat(data.chat);
             });
         }
 
@@ -580,18 +586,6 @@
                 container.appendChild(div);
             });
             container.scrollTop = container.scrollHeight;
-        }
-
-        // --- HELPERS ---
-        function generateInitialState() {
-            // Logic to generate cards and slots identical to initGame()
-            // We will actually let the existing initGame() logic run, then extract the state.
-            // But we need to do this without drawing.
-            // For MVP: Reuse the global logic but only inside the host.
-            // See window.initGame adaptation below.
-            return {
-                // Placeholder, actual logic is in the main script
-            };
         }
     </script>
 
