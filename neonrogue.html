@@ -690,7 +690,8 @@
 
         class Player extends Entity {
             constructor() {
-                super(0, 0, SHAPES.ship, '#0ff');
+                // MODIFIED: Use empty shape array for custom draw in 2D
+                super(0, 0, [], '#0ff'); 
                 this.friction = 0.92; 
                 this.accel = 0.8;
                 this.fireTimer = 0;
@@ -715,6 +716,51 @@
                 this.hp = this.stats.maxHp;
             }
 
+            // OVERRIDE: Custom draw method for the round ship with a turret
+            draw() {
+                if (this.dead) return;
+
+                const screenX = this.pos.x + width/2;
+                const screenY = this.pos.y + height/2;
+                
+                // Color is updated in update() for flicker/charge state
+                ctx.strokeStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.lineWidth = 3;
+
+                // --- 1. Draw Round Body (Sphere-like) ---
+                // Outer ring
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Inner core (subtle fill)
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.2;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+
+                // --- 2. Draw Turret ---
+                const barrelLength = 25;
+                const barrelWidth = 4;
+                // Angle correction needed as angle is calculated relative to vertical
+                const turretAngle = this.angle - Math.PI/2; 
+
+                const tx = screenX + Math.cos(turretAngle) * barrelLength;
+                const ty = screenY + Math.sin(turretAngle) * barrelLength;
+
+                // Draw a simple line barrel
+                ctx.beginPath();
+                ctx.moveTo(screenX, screenY);
+                ctx.lineTo(tx, ty);
+                ctx.lineWidth = barrelWidth;
+                ctx.strokeStyle = this.color;
+                ctx.stroke();
+
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+            
             update() {
                 // Input Handling via Input Manager
                 Input.update();
@@ -824,8 +870,6 @@
                     }
                 }
             }
-
-            // ... dash(), useBomb(), shoot() ...
 
             fireChargeShot() {
                 const aimAngle = this.angle - Math.PI/2;
@@ -1033,7 +1077,6 @@
                 this.pos.x += this.vel.x; this.pos.y += this.vel.y;
                 this.life--;
                 if (this.life <= 0) this.dead = true;
-                // Reduced particle spam for performance (was 0.8)
                 // Increased particle spam for Charge Shot
                 if (this.isCharge) {
                     if (Math.random() > 0.5) particles.push(new Particle(this.pos.x, this.pos.y, '#ff0', 0.8));
@@ -1143,8 +1186,8 @@
                         this.vel.x = Math.cos(angle) * speed; this.vel.y = Math.sin(angle) * speed; this.rotVel.z = 0.2; 
                     }
                     else if (this.type === 'spinner') {
-                         speed = 1.5;
-                         this.vel.x = Math.cos(angle) * speed; this.vel.y = Math.sin(angle) * speed; this.rotVel.z = 0.3; 
+                           speed = 1.5;
+                           this.vel.x = Math.cos(angle) * speed; this.vel.y = Math.sin(angle) * speed; this.rotVel.z = 0.3; 
                     }
                 }
             }
